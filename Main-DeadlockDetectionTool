@@ -109,7 +109,21 @@
 
   @media(max-width: 800px) { .main-grid { grid-template-columns: 1fr; } }
 
- 
+  /* Panel */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-title { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: .03em; }
+  .panel-body { padding: 16px 18px; }
+
   /* Input group */
   .input-group { margin-bottom: 14px; }
   .input-group label { display: block; font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
@@ -875,6 +889,7 @@ function loadPreset(name) {
   setTimeout(detect, 120);
 }
 
+//Completed the code with implementation
 // ── INIT ──────────────────────────────────────────────────────
 
 window.addEventListener('resize', () => { computeLayout(); drawGraph(); });
