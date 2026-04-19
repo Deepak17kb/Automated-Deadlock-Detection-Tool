@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deadlock Detection Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #232834;
+    --border2: #2e3545;
+    --accent: #e05a2b;
+    --accent2: #f0a060;
+    --green: #2dd4a0;
+    --green-dim: #1a3d30;
+    --red: #e24b4a;
+    --red-dim: #3d1a1a;
+    --blue: #4a8fe8;
+    --blue-dim: #1a2a3d;
+    --amber: #f0a030;
+    --amber-dim: #3d2d0a;
+    --text: #e8eaf0;
+    --text2: #8a92a8;
+    --text3: #4a5268;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(74,143,232,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(74,143,232,.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* Header */
+  header {
+    padding: 36px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 32px;
+  }
+  .header-inner { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .logo-text h1 {
+    font-family: var(--sans);
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -.5px;
+  }
+  .logo-text p { font-size: 11px; color: var(--text3); margin-top: 2px; letter-spacing: .05em; text-transform: uppercase; }
+
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .presets span { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; margin-right: 4px; }
+  .preset-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(224,90,43,.08); }
+
+  /* Main layout */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media(max-width: 800px) { .main-grid { grid-template-columns: 1fr; } }
+
+  /* Panel */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel-title { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: .03em; }
+  .panel-body { padding: 16px 18px; }
+
+  /* Input group */
+  .input-group { margin-bottom: 14px; }
+  .input-group label { display: block; font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
+  .input-row { display: flex; gap: 6px; }
+  .input-row input, .input-row select {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .input-row input:focus, .input-row select:focus { border-color: var(--accent); }
+  .input-row input::placeholder { color: var(--text3); }
+  .btn-add {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 14px;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #fff;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    white-space: nowrap;
+  }
+  .btn-add:hover { opacity: .85; }
+  .btn-add:active { transform: scale(.97); }
+
+  /* Tag list */
+  .tag-area { min-height: 32px; }
+  .tag-area-empty { font-size: 11px; color: var(--text3); font-style: italic; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: opacity .15s;
+    border: 1px solid transparent;
+  }
+  .tag:hover { opacity: .75; }
+  .tag .del { font-size: 10px; opacity: .6; }
+  .tag-proc { background: rgba(74,143,232,.15); color: #7ab4f5; border-color: rgba(74,143,232,.2); }
+  .tag-res  { background: rgba(45,212,160,.12); color: #5de8bf; border-color: rgba(45,212,160,.18); }
+  .tag-alloc { background: rgba(240,160,48,.12); color: #f5bc6a; border-color: rgba(240,160,48,.18); }
+  .tag-req  { background: rgba(224,90,43,.12); color: #f08060; border-color: rgba(224,90,43,.18); }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+  /* Detect button */
+  .btn-detect {
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--accent) 0%, #c43a10 100%);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #fff;
+    cursor: pointer;
+    letter-spacing: .04em;
+    transition: opacity .15s, transform .1s;
+    margin-top: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-detect::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.15) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .btn-detect:hover { opacity: .9; }
+  .btn-detect:active { transform: scale(.99); }
+
+  /* Right panel */
+  .right-col { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Graph */
+  .graph-panel {}
+  #graph-canvas {
+    width: 100%;
+    height: 280px;
+    display: block;
+    background: transparent;
+  }
+  .graph-legend {
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text3); }
+  .legend-dot { width: 20px; height: 2px; }
+  .legend-circ { width: 10px; height: 10px; border-radius: 50%; border: 1px solid; }
+  .legend-rect { width: 12px; height: 8px; border-radius: 2px; border: 1px solid; }
+
+  /* Results */
+  .results-panel {}
+  #results-body { padding: 16px 18px; }
+  .result-empty { font-size: 13px; color: var(--text3); text-align: center; padding: 20px 0; }
+
+  .result-card {
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border: 1px solid;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  .result-card:last-child { margin-bottom: 0; }
+  .result-card.danger { background: var(--red-dim); border-color: rgba(226,75,74,.3); }
+  .result-card.success { background: var(--green-dim); border-color: rgba(45,212,160,.25); }
+  .result-card.info { background: var(--blue-dim); border-color: rgba(74,143,232,.25); }
+  .result-card.warning { background: var(--amber-dim); border-color: rgba(240,160,48,.25); }
+
+  .result-card-title {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .result-card.danger .result-card-title { color: #f08080; }
+  .result-card.success .result-card-title { color: var(--green); }
+  .result-card.info .result-card-title { color: #7ab4f5; }
+  .result-card.warning .result-card-title { color: var(--amber); }
+
+  .badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .badge-danger { background: rgba(226,75,74,.2); color: #f08080; }
+  .badge-success { background: rgba(45,212,160,.18); color: var(--green); }
+
+  .cycle-path {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,.3);
+    border-radius: var(--radius-sm);
+    color: #f08080;
+    margin-bottom: 10px;
+    border-left: 3px solid var(--red);
+    word-break: break-all;
+  }
+
+  .strategies-title { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text3); margin-bottom: 8px; }
+  .strategy-item {
+    display: flex; gap: 10px;
+    font-size: 12px;
+    color: var(--text2);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    line-height: 1.55;
+  }
+  .strategy-item:last-child { margin-bottom: 0; }
+  .strategy-num {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent2);
+    min-width: 18px;
+    padding-top: 1px;
+  }
+
+  .coffman-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .coffman-item {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--text2);
+    padding: 6px 10px;
+    background: rgba(255,255,255,.03);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+  .coffman-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--red); flex-shrink: 0;
+    box-shadow: 0 0 6px var(--red);
+  }
+
+  /* Tooltip */
+  .tooltip-hint {
+    font-size: 10px;
+    color: var(--text3);
+    text-align: center;
+    padding: 6px 0 0;
+  }
+
+  /* Section separator */
+  .section-sep {
+    display: flex; align-items: center; gap: 10px;
+    margin: 4px 0 12px;
+    font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em;
+  }
+  .section-sep::before, .section-sep::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  select option { background: #181c24; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">🔒</div>
+        <div class="logo-text">
+          <h1>Deadlock Detector</h1>
+          <p>Resource Allocation Graph Analyzer</p>
+        </div>
+      </div>
+      <div class="presets">
+        <span>Presets:</span>
+        <button class="preset-btn" onclick="loadPreset('classic')">Classic (2P)</button>
+        <button class="preset-btn" onclick="loadPreset('dining')">Dining (3P)</button>
+        <button class="preset-btn" onclick="loadPreset('chain')">Chain (4P)</button>
+        <button class="preset-btn" onclick="loadPreset('safe')">Safe State</button>
+        <button class="preset-btn" onclick="clearAll()">Clear</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- Left: Input Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">System Configuration</span>
+      </div>
+      <div class="panel-body">
+
+        <!-- Processes -->
+        <div class="input-group">
+          <label>Processes</label>
+          <div class="input-row">
+            <input id="p-in" placeholder="e.g. P1" maxlength="6" onkeydown="if(event.key==='Enter')addProcess()">
+            <button class="btn-add" onclick="addProcess()">+ Add</button>
+          </div>
+          <div style="margin-top:8px" class="tag-area">
+            <div id="proc-tags" class="tags"><span class="tag-area-empty">No processes added</span></div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Resources -->
+        <div class="input-group">
+          <label>Resources</label>
+          <div class="input-row">
+            <input id="r-in" placeholder="e.g. R1" maxlength="6" onkeydown="if(event.key==='Enter')addResource()">
+            <button class="btn-add" onclick="addResource()">+ Add</button>
+          </div>
+          <div style="margin-top:8px" class="tag-area">
+            <div id="res-tags" class="tags"><span class="tag-area-empty">No resources added</span></div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Allocations -->
+        <div class="input-group">
+          <label>Allocations — Resource currently held by Process</label>
+          <div class="input-row">
+            <select id="a-res"><option value="">Resource</option></select>
+            <select id="a-proc"><option value="">Process</option></select>
+            <button class="btn-add" onclick="addAlloc()">+ Add</button>
+          </div>
+          <div style="margin-top:8px" class="tag-area">
+            <div id="alloc-tags" class="tags"><span class="tag-area-empty">No allocations</span></div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Requests -->
+        <div class="input-group">
+          <label>Requests — Process waiting for Resource</label>
+          <div class="input-row">
+            <select id="q-proc"><option value="">Process</option></select>
+            <select id="q-res"><option value="">Resource</option></select>
+            <button class="btn-add" onclick="addReq()">+ Add</button>
+          </div>
+          <div style="margin-top:8px" class="tag-area">
+            <div id="req-tags" class="tags"><span class="tag-area-empty">No requests</span></div>
+          </div>
+        </div>
+
+        <button class="btn-detect" onclick="detect()">⬡ Run Deadlock Detection</button>
+        <div class="tooltip-hint">Click any node on the graph to learn more</div>
+      </div>
+    </div>
+
+    <!-- Right: Graph + Results -->
+    <div class="right-col">
+
+      <div class="panel graph-panel">
+        <div class="panel-header">
+          <span class="panel-title">Resource Allocation Graph</span>
+          <span style="font-size:11px;color:var(--text3)" id="graph-status">—</span>
+        </div>
+        <canvas id="graph-canvas"></canvas>
+        <div class="graph-legend">
+          <div class="legend-item"><div class="legend-circ" style="background:rgba(74,143,232,.15);border-color:#4a8fe8"></div> Process</div>
+          <div class="legend-item"><div class="legend-rect" style="background:rgba(45,212,160,.1);border-color:#2dd4a0"></div> Resource</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#2dd4a0"></div> Allocated</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f0a030;border-top:2px dashed #f0a030;height:0"></div> Requested</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#e24b4a"></div> Deadlock</div>
+        </div>
+      </div>
+
+      <div class="panel results-panel">
+        <div class="panel-header">
+          <span class="panel-title">Detection Results</span>
+          <span id="result-badge"></span>
+        </div>
+        <div id="results-body">
+          <div class="result-empty">Run detection to see results here</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div style="height:40px"></div>
+</div>
+
+<script>
+let processes = [], resources = [], allocs = [], reqs = [];
+let deadlockNodes = new Set(), deadlockEdges = new Set();
+let nodePositions = {};
+let animFrame = null, hoverNode = null;
+
+// ── DATA MANAGEMENT ──────────────────────────────────────────
+
+function uid() { return Math.random().toString(36).slice(2, 7); }
+
+function addProcess() {
+  const v = document.getElementById('p-in').value.trim();
+  if (!v || processes.includes(v)) return;
+  processes.push(v);
+  document.getElementById('p-in').value = '';
+  refresh();
+}
+function addResource() {
+  const v = document.getElementById('r-in').value.trim();
+  if (!v || resources.includes(v)) return;
+  resources.push(v);
+  document.getElementById('r-in').value = '';
+  refresh();
+}
+function addAlloc() {
+  const r = document.getElementById('a-res').value;
+  const p = document.getElementById('a-proc').value;
+  if (!r || !p) return;
+  if (allocs.find(a => a.r === r && a.p === p)) return;
+  allocs.push({ r, p, id: uid() });
+  refresh();
+}
+function addReq() {
+  const p = document.getElementById('q-proc').value;
+  const r = document.getElementById('q-res').value;
+  if (!r || !p) return;
+  if (reqs.find(a => a.p === p && a.r === r)) return;
+  reqs.push({ p, r, id: uid() });
+  refresh();
+}
+
+function clearAll() {
+  processes = []; resources = []; allocs = []; reqs = [];
+  deadlockNodes = new Set(); deadlockEdges = new Set();
+  document.getElementById('results-body').innerHTML = '<div class="result-empty">Run detection to see results here</div>';
+  document.getElementById('result-badge').innerHTML = '';
+  refresh();
+}
+
+function refresh() {
+  renderTags('proc-tags', processes, 'tag-proc', n => { processes = processes.filter(x => x !== n); allocs = allocs.filter(a => a.p !== n); reqs = reqs.filter(a => a.p !== n); deadlockNodes.delete(n); refresh(); });
+  renderTags('res-tags', resources, 'tag-res', n => { resources = resources.filter(x => x !== n); allocs = allocs.filter(a => a.r !== n); reqs = reqs.filter(a => a.r !== n); deadlockNodes.delete(n); refresh(); });
+
+  document.getElementById('alloc-tags').innerHTML = allocs.length
+    ? allocs.map(a => `<span class="tag tag-alloc" onclick="allocs=allocs.filter(x=>x.id!=='${a.id}');refresh()">${a.r}→${a.p} <span class="del">✕</span></span>`).join('')
+    : '<span class="tag-area-empty">No allocations</span>';
+  document.getElementById('req-tags').innerHTML = reqs.length
+    ? reqs.map(a => `<span class="tag tag-req" onclick="reqs=reqs.filter(x=>x.id!=='${a.id}');refresh()">${a.p}→${a.r} <span class="del">✕</span></span>`).join('')
+    : '<span class="tag-area-empty">No requests</span>';
+
+  fillSelects();
+  computeLayout();
+  drawGraph();
+}
+
+function renderTags(id, arr, cls, removeFn) {
+  document.getElementById(id).innerHTML = arr.length
+    ? arr.map(v => `<span class="tag ${cls}" onclick='(${removeFn.toString()})("${v}")'>${v} <span class="del">✕</span></span>`).join('')
+    : '<span class="tag-area-empty">None added yet</span>';
+}
+
+function fillSelects() {
+  const fills = {
+    'a-res': resources, 'a-proc': processes,
+    'q-proc': processes, 'q-res': resources
+  };
+  const labels = { 'a-res': 'Resource', 'a-proc': 'Process', 'q-proc': 'Process', 'q-res': 'Resource' };
+  Object.entries(fills).forEach(([id, arr]) => {
+    const s = document.getElementById(id), prev = s.value;
+    s.innerHTML = `<option value="">${labels[id]}</option>` + arr.map(v => `<option${v === prev ? ' selected' : ''}>${v}</option>`).join('');
+  });
+}
+
+// ── LAYOUT ────────────────────────────────────────────────────
+
+function computeLayout() {
+  const cvs = document.getElementById('graph-canvas');
+  const W = cvs.clientWidth || 600, H = cvs.clientHeight || 280;
+  const all = [
+    ...processes.map(p => ({ id: p, type: 'proc' })),
+    ...resources.map(r => ({ id: r, type: 'res' }))
+  ];
+  const n = all.length;
+  if (n === 0) { nodePositions = {}; return; }
+
+  // Circular layout with jitter avoidance
+  const rx = Math.min(W * 0.38, 180);
+  const ry = Math.min(H * 0.36, 100);
+  all.forEach((node, i) => {
+    const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+    nodePositions[node.id] = {
+      x: W / 2 + rx * Math.cos(angle),
+      y: H / 2 + ry * Math.sin(angle),
+      type: node.type
+    };
+  });
+}
+
+// ── CANVAS DRAWING ────────────────────────────────────────────
+
+function drawGraph() {
+  const cvs = document.getElementById('graph-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  cvs.width = cvs.clientWidth * dpr;
+  cvs.height = cvs.clientHeight * dpr;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = cvs.clientWidth, H = cvs.clientHeight;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (processes.length === 0 && resources.length === 0) {
+    ctx.fillStyle = '#4a5268';
+    ctx.font = '13px JetBrains Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Add processes and resources to see the graph', W / 2, H / 2);
+    document.getElementById('graph-status').textContent = '0 nodes';
+    return;
+  }
+
+  document.getElementById('graph-status').textContent = `${processes.length} processes · ${resources.length} resources`;
+
+  // Draw edges
+  allocs.forEach(({ r, p }) => {
+    const from = nodePositions[r], to = nodePositions[p];
+    if (!from || !to) return;
+    const isDL = deadlockNodes.has(r) && deadlockNodes.has(p) && isDeadlockEdge(r, p, 'alloc');
+    drawArrow(ctx, from.x, from.y, to.x, to.y, isDL ? '#e24b4a' : '#2dd4a0', isDL ? 2.5 : 1.5, false, isDL);
+  });
+  reqs.forEach(({ p, r }) => {
+    const from = nodePositions[p], to = nodePositions[r];
+    if (!from || !to) return;
+    const isDL = deadlockNodes.has(p) && deadlockNodes.has(r) && isDeadlockEdge(p, r, 'req');
+    drawArrow(ctx, from.x, from.y, to.x, to.y, isDL ? '#e24b4a' : '#f0a030', isDL ? 2.5 : 1.5, true, isDL);
+  });
+
+  // Draw nodes
+  Object.entries(nodePositions).forEach(([id, { x, y, type }]) => {
+    const isDL = deadlockNodes.has(id);
+    const isHover = hoverNode === id;
+    if (type === 'proc') drawProcess(ctx, x, y, id, isDL, isHover);
+    else drawResource(ctx, x, y, id, isDL, isHover);
+  });
+}
+
+function isDeadlockEdge(a, b, kind) {
+  return deadlockEdges.has(`${a}-${b}-${kind}`);
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color, width, dashed, highlight) {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const nodeR = 24;
+  const ex = x2 - nodeR * Math.cos(angle);
+  const ey = y2 - nodeR * Math.sin(angle);
+  const sx = x1 + nodeR * Math.cos(angle);
+  const sy = y1 + nodeR * Math.sin(angle);
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  if (dashed) ctx.setLineDash([5, 4]);
+  if (highlight) ctx.shadowColor = color, ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.shadowBlur = 0;
+
+  // Arrowhead
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.translate(ex, ey);
+  ctx.rotate(angle);
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-10, -4.5);
+  ctx.lineTo(-10, 4.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawProcess(ctx, x, y, label, isDL, isHover) {
+  const r = 22;
+  ctx.save();
+  if (isDL) { ctx.shadowColor = '#e24b4a'; ctx.shadowBlur = 18; }
+  else if (isHover) { ctx.shadowColor = '#4a8fe8'; ctx.shadowBlur = 14; }
+
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = isDL ? 'rgba(226,75,74,.22)' : 'rgba(74,143,232,.16)';
+  ctx.fill();
+  ctx.strokeStyle = isDL ? '#e24b4a' : '#4a8fe8';
+  ctx.lineWidth = isDL ? 2.5 : 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = isDL ? '#f08080' : '#7ab4f5';
+  ctx.font = '600 12px Syne, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y);
+  ctx.restore();
+}
+
+function drawResource(ctx, x, y, label, isDL, isHover) {
+  const w = 52, h = 28;
+  ctx.save();
+  if (isDL) { ctx.shadowColor = '#e24b4a'; ctx.shadowBlur = 18; }
+  else if (isHover) { ctx.shadowColor = '#2dd4a0'; ctx.shadowBlur = 14; }
+
+  ctx.beginPath();
+  ctx.roundRect(x - w / 2, y - h / 2, w, h, 5);
+  ctx.fillStyle = isDL ? 'rgba(226,75,74,.2)' : 'rgba(45,212,160,.12)';
+  ctx.fill();
+  ctx.strokeStyle = isDL ? '#e24b4a' : '#2dd4a0';
+  ctx.lineWidth = isDL ? 2.5 : 1.5;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = isDL ? '#f08080' : '#5de8bf';
+  ctx.font = '600 12px Syne, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y);
+  ctx.restore();
+}
+
+// Hover interaction on canvas
+document.getElementById('graph-canvas').addEventListener('mousemove', e => {
+  const cvs = e.target;
+  const rect = cvs.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let found = null;
+  Object.entries(nodePositions).forEach(([id, { x, y }]) => {
+    const dist = Math.hypot(mx - x, my - y);
+    if (dist < 28) found = id;
+  });
+  if (found !== hoverNode) { hoverNode = found; drawGraph(); }
+  cvs.style.cursor = found ? 'pointer' : 'default';
+});
+
+// ── DETECTION ALGORITHM ────────────────────────────────────────
+
+function detect() {
+  deadlockNodes = new Set();
+  deadlockEdges = new Set();
+
+  const resultsEl = document.getElementById('results-body');
+  const badgeEl = document.getElementById('result-badge');
+
+  if (processes.length === 0 || resources.length === 0) {
+    resultsEl.innerHTML = `<div class="result-empty">Add at least one process and one resource first.</div>`;
+    return;
+  }
+
+  // Build wait-for graph: P→P' if P waits for R and R is held by P'
+  const waitFor = {};
+  processes.forEach(p => waitFor[p] = []);
+
+  reqs.forEach(({ p, r }) => {
+    const holder = allocs.find(a => a.r === r);
+    if (holder && holder.p !== p) {
+      if (!waitFor[p].includes(holder.p)) waitFor[p].push(holder.p);
+    }
+  });
+
+  // Find all cycles via DFS
+  const allCycles = [];
+
+  function dfs(node, path, inStack) {
+    inStack.add(node);
+    path.push(node);
+    for (const nb of (waitFor[node] || [])) {
+      if (inStack.has(nb)) {
+        const ci = path.indexOf(nb);
+        allCycles.push([...path.slice(ci), nb]);
+      } else if (!path.includes(nb)) {
+        dfs(nb, [...path], new Set(inStack));
+      }
+    }
+  }
+
+  processes.forEach(p => dfs(p, [], new Set()));
+
+  // Deduplicate cycles
+  const seen = new Set();
+  const unique = allCycles.filter(c => {
+    const key = [...c].slice(0, -1).sort().join('|');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+
+  // Mark deadlock nodes and edges
+  unique.forEach(cycle => {
+    cycle.slice(0, -1).forEach(n => deadlockNodes.add(n));
+    // Find the resources involved in cycle edges
+    for (let i = 0; i < cycle.length - 1; i++) {
+      const p = cycle[i], q = cycle[i + 1];
+      // p waits for some R held by q
+      const waitedRes = reqs.find(r2 => r2.p === p && allocs.find(a => a.r === r2.r && a.p === q));
+      if (waitedRes) {
+        deadlockNodes.add(waitedRes.r);
+        deadlockEdges.add(`${waitedRes.r}-${q}-alloc`);
+        deadlockEdges.add(`${p}-${waitedRes.r}-req`);
+      }
+    }
+  });
+
+  drawGraph();
+
+  let html = '';
+
+  if (unique.length === 0) {
+    html = `<div class="result-card success">
+      <div class="result-card-title">✓ No Deadlock Detected <span class="badge badge-success">SAFE</span></div>
+      <div style="font-size:12px;color:#8a92a8;line-height:1.6">
+        The resource allocation graph contains no circular wait conditions.<br>
+        All processes can eventually complete execution.
+      </div>
+    </div>`;
+    badgeEl.innerHTML = '<span class="badge badge-success">SAFE</span>';
+  } else {
+    unique.forEach((cycle, idx) => {
+      const procs = cycle.slice(0, -1);
+      const involvedRes = [];
+      procs.forEach(p => {
+        const req = reqs.find(r => r.p === p);
+        if (req && !involvedRes.includes(req.r)) involvedRes.push(req.r);
+      });
+
+      const strategies = getStrategies(procs, involvedRes);
+
+      html += `<div class="result-card danger">
+        <div class="result-card-title">
+          ⚠ Deadlock #${idx + 1} — Circular Wait
+          <span class="badge badge-danger">${procs.length} PROCS</span>
+        </div>
+        <div class="cycle-path">${cycle.join(' → ')}</div>
+        <div class="strategies-title">Resolution Strategies</div>
+        ${strategies.map((s, i) => `<div class="strategy-item"><span class="strategy-num">#${i + 1}</span><span>${s}</span></div>`).join('')}
+      </div>`;
+    });
+
+    html += `<div class="result-card warning">
+      <div class="result-card-title">⬡ Coffman Conditions Met</div>
+      <div class="coffman-grid">
+        <div class="coffman-item"><div class="coffman-dot"></div>Mutual Exclusion</div>
+        <div class="coffman-item"><div class="coffman-dot"></div>Hold &amp; Wait</div>
+        <div class="coffman-item"><div class="coffman-dot"></div>No Preemption</div>
+        <div class="coffman-item"><div class="coffman-dot"></div>Circular Wait</div>
+      </div>
+    </div>`;
+
+    badgeEl.innerHTML = `<span class="badge badge-danger">${unique.length} DEADLOCK${unique.length > 1 ? 'S' : ''}</span>`;
+  }
+
+  resultsEl.innerHTML = html;
+}
+
+function getStrategies(procs, resources) {
+  const strats = [];
+  const victim = procs[procs.length - 1];
+  strats.push(`<b style="color:var(--text)">Process termination:</b> Kill process <code style="color:var(--accent2)">${victim}</code> to break the cycle. Re-run using the Banker's algorithm to choose the lowest-cost victim.`);
+  if (resources.length > 0) {
+    const res = resources[0];
+    strats.push(`<b style="color:var(--text)">Resource preemption:</b> Forcibly reclaim <code style="color:var(--accent2)">${res}</code> and roll back its holder to a checkpointed safe state.`);
+  }
+  const sorted = [...resources].sort().join(' &lt; ');
+  strats.push(`<b style="color:var(--text)">Prevention — global ordering:</b> Enforce a fixed request order: ${sorted || 'R1 &lt; R2 &lt; …'}. All processes must request resources in this sequence to eliminate circular wait.`);
+  if (procs.length >= 3) {
+    strats.push(`<b style="color:var(--text)">Banker's algorithm:</b> Before granting any future request, simulate resource allocation and verify the system remains in a safe state.`);
+  }
+  return strats;
+}
+
+// ── PRESETS ────────────────────────────────────────────────────
+
+function loadPreset(name) {
+  clearAll();
+  const presets = {
+    classic: {
+      p: ['P1', 'P2'], r: ['R1', 'R2'],
+      allocs: [['R1', 'P1'], ['R2', 'P2']],
+      reqs: [['P1', 'R2'], ['P2', 'R1']]
+    },
+    dining: {
+      p: ['P1', 'P2', 'P3'], r: ['Fork1', 'Fork2', 'Fork3'],
+      allocs: [['Fork1', 'P1'], ['Fork2', 'P2'], ['Fork3', 'P3']],
+      reqs: [['P1', 'Fork2'], ['P2', 'Fork3'], ['P3', 'Fork1']]
+    },
+    chain: {
+      p: ['P1', 'P2', 'P3', 'P4'], r: ['R1', 'R2', 'R3', 'R4'],
+      allocs: [['R1', 'P1'], ['R2', 'P2'], ['R3', 'P3'], ['R4', 'P4']],
+      reqs: [['P1', 'R2'], ['P2', 'R3'], ['P3', 'R4'], ['P4', 'R1']]
+    },
+    safe: {
+      p: ['P1', 'P2', 'P3'], r: ['R1', 'R2'],
+      allocs: [['R1', 'P1'], ['R2', 'P2']],
+      reqs: [['P2', 'R1'], ['P3', 'R2']]
+    }
+  };
+  const d = presets[name];
+  processes = [...d.p]; resources = [...d.r];
+  allocs = d.allocs.map(([r, p]) => ({ r, p, id: uid() }));
+  reqs = d.reqs.map(([p, r]) => ({ p, r, id: uid() }));
+  refresh();
+  setTimeout(detect, 120);
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+
+window.addEventListener('resize', () => { computeLayout(); drawGraph(); });
+
+// Initial empty draw
+refresh();
+</script>
+</body>
+</html>
