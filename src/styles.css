@@ -63,6 +63,13 @@ main { max-width: 1600px; margin: 0 auto; padding: 25px 34px 44px; }
 .eyebrow span { padding: 0 5px; color: var(--lime); }
 .page-heading h1 { margin: 0; font: 600 30px 'Space Grotesk', sans-serif; }
 .page-heading h1 em { color: var(--lime); font-style: normal; }
+.workflow-track { display: flex; align-items: center; gap: 8px; margin: 12px 0 8px; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+.workflow-item { display: flex; align-items: center; gap: 6px; color: var(--quiet); font-size: 10px; }
+.workflow-item span { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line-bright); border-radius: 50%; font: 9px var(--mono); }
+.workflow-item.current { color: var(--ink); }
+.workflow-item.current span { border-color: var(--lime); color: var(--lime); }
+.workflow-item.complete span { border-color: var(--mint); color: var(--mint); }
+.workflow-item:not(:last-child)::after { width: 20px; height: 1px; margin: 0 5px; background: var(--line-bright); content: ''; }
 .run-state { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font: 9px var(--mono); }
 .run-state-dot, .core-led { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--quiet); }
 .run-state.running .run-state-dot, .core-status.running .core-led { background: var(--mint); }
@@ -284,6 +291,8 @@ footer svg { color: var(--mint); }
   main { padding: 19px 12px 30px; }
   .page-heading { min-height: 66px; }
   .page-heading h1 { font-size: 25px; }
+  .workflow-track { gap: 4px; }
+  .workflow-item:not(:last-child)::after { width: 10px; margin: 0 2px; }
   .eyebrow { font-size: 8px; }
   .run-state { padding: 6px; font-size: 8px; }
   .sidebar { grid-template-columns: 1fr; }

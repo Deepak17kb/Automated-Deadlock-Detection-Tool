@@ -203,6 +203,7 @@ function App() {
   const completedCount = processStates.filter(process => ['completed', 'terminated'].includes(process.status)).length;
   const cpuLoad = run?.tick ? Math.round(run.cpu.busyTicks / run.tick * 100) : 0;
   const appStatus = !apiOnline && !localMode ? 'offline' : run?.status === 'deadlocked' ? 'deadlock' : run?.status === 'running' ? 'running' : run?.status === 'complete' ? 'complete' : 'ready';
+  const workflowStep = run?.status === 'deadlocked' || run?.deadlockResolved || run?.status === 'complete' ? 3 : run ? 2 : 1;
 
   function updateModel(updater) {
     setModel(current => typeof updater === 'function' ? updater(current) : updater);
@@ -537,12 +538,16 @@ function App() {
           <div className={`run-state ${appStatus}`}><span className="run-state-dot" />{run ? statusLabel(run.status).toUpperCase() : 'STAGED SYSTEM'}</div>
         </section>
 
+        <nav className="workflow-track" aria-label="Simulation workflow">
+          {['Set up', 'Run', 'Resolve'].map((step, index) => <div className={`workflow-item ${workflowStep === index + 1 ? 'current' : workflowStep > index + 1 ? 'complete' : ''}`} key={step}><span>{index + 1}</span>{step}</div>)}
+        </nav>
+
         <div className="notice-slot" aria-live="polite">{notice && <div className="notice"><CircleHelp size={15} /><span>{notice}</span><button type="button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={14} /></button></div>}</div>
 
         <div className="layout">
           <aside className="sidebar">
             <section className="side-section setup-section">
-              <div className="section-title"><span className="section-index">01</span><div><h2>System setup</h2><p>Processes · resources · dependencies</p></div></div>
+              <div className="section-title"><span className="section-index">01</span><div><h2>Set up a system</h2><p>Add processes, resources, and links</p></div></div>
               <div className="field-block">
                 <label htmlFor="process-name">Processes</label>
                 <form className="entry-row" onSubmit={event => { event.preventDefault(); addProcess(); }}>
@@ -552,7 +557,7 @@ function App() {
                 <div className="tag-list">{model.processes.map(id => <span className="entity-tag process-tag" key={id}>{id}<button type="button" onClick={() => removeProcess(id)} aria-label={`Remove process ${id}`}><X size={11} /></button></span>)}</div>
               </div>
               <div className="field-block">
-                <label htmlFor="resource-name">Resources <span>single instance</span></label>
+                <label htmlFor="resource-name">Resources <span>one copy each</span></label>
                 <form className="entry-row" onSubmit={event => { event.preventDefault(); addResource(); }}>
                   <input id="resource-name" value={resourceInput} maxLength={32} onChange={event => setResourceInput(event.target.value)} placeholder="e.g. R1" />
                   <button className="icon-button add-button" type="submit" aria-label="Add resource"><Plus size={16} /></button>
@@ -560,7 +565,7 @@ function App() {
                 <div className="tag-list">{model.resources.map(id => <span className="entity-tag resource-tag" key={id}>{id}<button type="button" onClick={() => removeResource(id)} aria-label={`Remove resource ${id}`}><X size={11} /></button></span>)}</div>
               </div>
               <div className="field-block">
-                <label htmlFor="allocation-process">Resource allocation</label>
+                <label htmlFor="allocation-process">Resource held by a process</label>
                 <div className="relation-row">
                   <select id="allocation-resource" aria-label="Resource to allocate" value={allocationResource} onChange={event => setAllocationResource(event.target.value)}><option value="">Resource</option>{model.resources.map(value => <option key={value}>{value}</option>)}</select>
                   <ArrowRight size={14} />
@@ -570,7 +575,7 @@ function App() {
                 <div className="relation-list">{model.allocations.map((item, index) => <div className="relation-chip" key={`${item.resource}-${item.process}`}><span>{item.resource} <ArrowRight size={11} /> {item.process}</span><button type="button" onClick={() => removeRelation('allocations', index)} aria-label={`Remove allocation ${item.resource} to ${item.process}`}><X size={12} /></button></div>)}</div>
               </div>
               <div className="field-block">
-                <label htmlFor="request-process">Resource requests</label>
+                <label htmlFor="request-process">Process waiting for a resource</label>
                 <div className="relation-row">
                   <select id="request-process" value={requestProcess} onChange={event => setRequestProcess(event.target.value)}><option value="">Process</option>{model.processes.map(value => <option key={value}>{value}</option>)}</select>
                   <ArrowRight size={14} />
@@ -582,7 +587,7 @@ function App() {
             </section>
 
             <section className="side-section scenario-section">
-              <div className="section-title"><span className="section-index">02</span><div><h2>Scenario library</h2><p>{localMode ? 'Saved in this browser' : 'Saved in the backend database'}</p></div></div>
+              <div className="section-title"><span className="section-index">02</span><div><h2>Save or load</h2><p>{localMode ? 'Saved on this device' : 'Saved in the database'}</p></div></div>
               <div className="field-block compact-field"><label htmlFor="scenario-name">Scenario name</label><input id="scenario-name" value={scenarioName} maxLength={80} onChange={event => setScenarioName(event.target.value)} /></div>
               <button className="wide-button secondary-button" type="button" onClick={saveScenario} disabled={busy}><Save size={15} />Save scenario</button>
               <div className="select-row">
@@ -599,12 +604,12 @@ function App() {
             <div className="metrics-grid">
               <article className="metric-card metric-cpu"><span className="metric-icon"><Cpu size={16} /></span><span className="metric-label">VIRTUAL CPU LOAD</span><strong>{cpuLoad}<small>%</small></strong><div className="metric-meter"><span style={{ width: `${cpuLoad}%` }} /></div></article>
               <article className="metric-card"><span className="metric-icon mint"><Activity size={16} /></span><span className="metric-label">RUNNING</span><strong>{runningCount}<small> / {processRows.length}</small></strong><span className="metric-note">{run?.cpu.dispatches || 0} dispatches</span></article>
-              <article className="metric-card"><span className="metric-icon amber"><Clock3 size={16} /></span><span className="metric-label">WAITING / BLOCKED</span><strong>{blockedCount}<small> processes</small></strong><span className="metric-note">Round-robin queue</span></article>
+              <article className="metric-card"><span className="metric-icon amber"><Clock3 size={16} /></span><span className="metric-label">WAITING</span><strong>{blockedCount}<small> processes</small></strong><span className="metric-note">Blocked on a resource</span></article>
               <article className="metric-card"><span className="metric-icon blue"><Boxes size={16} /></span><span className="metric-label">RESOURCES IN USE</span><strong>{occupiedCount}<small> / {resourceCount}</small></strong><span className="metric-note">Single-instance model</span></article>
             </div>
 
             <section className="monitor-panel runtime-panel">
-              <div className="panel-heading"><div><span className="panel-kicker">LIVE EXECUTION</span><h2>Process scheduler</h2></div><div className="runtime-controls">
+              <div className="panel-heading"><div><span className="panel-kicker">02 · SIMULATION</span><h2>Process activity</h2></div><div className="runtime-controls">
                 <span className="sim-clock"><Clock3 size={14} />{clockLabel(run?.tick || 0)}</span>
                 <select aria-label="Simulation speed" value={speed} onChange={event => changeSpeed(Number(event.target.value))}><option value={1200}>0.75×</option><option value={900}>1×</option><option value={450}>2×</option><option value={225}>4×</option></select>
                 <button className="control-button start-control" type="button" onClick={() => control('start')} disabled={busy || ['running', 'deadlocked', 'complete'].includes(run?.status)}><Play size={14} />{run?.status === 'waiting' ? 'Resume' : 'Start'}</button>
@@ -613,9 +618,9 @@ function App() {
                 <button className="control-button" type="button" onClick={() => control('reset')} disabled={busy || !run} title="Reset run"><RotateCcw size={14} /></button>
                 <button className="control-button new-run-button" type="button" onClick={createNewRun} disabled={busy} title="Prepare a new run"><ListRestart size={14} /><span>New run</span></button>
               </div></div>
-              {!run && <div className="staged-banner"><Layers3 size={15} /><span>Configure a system, choose a starter scenario, then start a backend simulation.</span><button type="button" onClick={() => control('start')} disabled={busy || !model.processes.length || !model.resources.length}><Play size={13} />Start run</button></div>}
+              {!run && <div className="staged-banner"><Layers3 size={15} /><span>Choose an example or finish setup to begin.</span><button type="button" onClick={() => control('start')} disabled={busy || !model.processes.length || !model.resources.length}><Play size={13} />Start</button></div>}
               {run && <div className="scheduler-strip"><div className={`core-status ${run.status}`}><span className="core-led" /><div><small>CPU CORE 01</small><strong>{run.cpu.currentProcess || (run.status === 'deadlocked' ? 'HALTED · DEADLOCK' : run.status === 'complete' ? 'ALL PROCESSES EXITED' : 'DISPATCH READY')}</strong></div></div><div className="scheduler-stats"><span>Tick <strong>{run.tick}</strong></span><span>Finished <strong>{completedCount}/{processRows.length}</strong></span><span>Stream <strong className={socketOnline ? 'stream-ok' : 'stream-down'}>{socketOnline ? 'Connected' : 'Offline'}</strong></span></div></div>}
-              <div className="process-table-wrap"><table className="process-table"><thead><tr><th>PROCESS</th><th>STATE</th><th>EXECUTION PHASE</th><th>BURST</th><th>HELD RESOURCES</th></tr></thead><tbody>
+              <div className="process-table-wrap"><table className="process-table"><thead><tr><th>PROCESS</th><th>STATUS</th><th>WHAT IT'S DOING</th><th>PROGRESS</th><th>RESOURCES</th></tr></thead><tbody>
                 {processRows.length ? processRows.map(process => {
                   const held = allocations.filter(item => item.process === process.id).map(item => item.resource);
                   const progress = statePercent(process);
@@ -624,11 +629,11 @@ function App() {
               </tbody></table></div>
             </section>
 
-            {run?.status === 'deadlocked' && <section className="deadlock-banner" role="alert"><div className="deadlock-symbol"><AlertTriangle size={20} /></div><div className="deadlock-copy"><span>DEADLOCK DETECTED · RUN PAUSED</span><h2>Resource wait cycle prevents progress</h2><p>{run.deadlocks.map((cycle, index) => <span key={index}>{cycle.edges.map((edge, edgeIndex) => <span key={edgeIndex}>{edge.from} <b>→ {edge.resource} →</b> </span>)}{cycle.edges.at(-1)?.to}</span>)}</p></div><button className="resolve-button" type="button" onClick={() => { setResolutionProcess(resolutionCandidates[0] || ''); setResolutionOpen(true); }}><ShieldCheck size={16} />Resolve deadlock</button></section>}
+            {run?.status === 'deadlocked' && <section className="deadlock-banner" role="alert"><div className="deadlock-symbol"><AlertTriangle size={20} /></div><div className="deadlock-copy"><span>03 · DEADLOCK FOUND</span><h2>Processes are waiting on each other</h2><p>{run.deadlocks.map((cycle, index) => <span key={index}>{cycle.edges.map((edge, edgeIndex) => <span key={edgeIndex}>{edge.from} <b>→ {edge.resource} →</b> </span>)}{cycle.edges.at(-1)?.to}</span>)}</p></div><button className="resolve-button" type="button" onClick={() => { setResolutionProcess(resolutionCandidates[0] || ''); setResolutionOpen(true); }}><ShieldCheck size={16} />Fix deadlock</button></section>}
             {run?.deadlockResolved && run.status !== 'deadlocked' && <section className="resolved-banner"><span className="resolved-icon"><Check size={16} /></span><div><strong>Deadlock recovery applied</strong><span>{run.resolution?.process} terminated · {run.resolution?.releasedResources?.join(', ') || 'no held resources'} released</span></div></section>}
 
             <div className="lower-grid">
-              <section className="monitor-panel resource-panel"><div className="panel-heading"><div><span className="panel-kicker">RESOURCE MAP</span><h2>Ownership & wait queue</h2></div><Boxes size={17} /></div><div className="resource-table">
+              <section className="monitor-panel resource-panel"><div className="panel-heading"><div><span className="panel-kicker">RESOURCE STATUS</span><h2>Who has each resource?</h2></div><Boxes size={17} /></div><div className="resource-table">
                 {runtimeResources.length ? runtimeResources.map(resource => {
                   const owner = runtimeAllocations.find(item => item.resource === resource)?.process;
                   const waiters = activeRequests.filter(item => item.resource === resource).map(item => item.process);
@@ -636,17 +641,28 @@ function App() {
                 }) : <div className="empty-state">Resources will appear after configuration.</div>}
               </div></section>
 
-              <section className="monitor-panel events-panel"><div className="panel-heading"><div><span className="panel-kicker">{localMode ? 'SAVED IN THIS BROWSER' : 'PERSISTED TO SQLITE'}</span><h2>Execution trace</h2></div><span className="event-total">{run?.events?.length || 0} events</span></div><div className="event-list">
+              <section className="monitor-panel events-panel"><div className="panel-heading"><div><span className="panel-kicker">{localMode ? 'SAVED ON THIS DEVICE' : 'SAVED TO DATABASE'}</span><h2>What happened</h2></div><span className="event-total">{run?.events?.length || 0} events</span></div><div className="event-list">
                 {recentEvents.length ? recentEvents.map((event, index) => <div className="event-item" key={`${event.tick}-${event.kind}-${index}`}><time>{clockLabel(event.tick)}</time><span className={`event-type ${event.kind.toLowerCase()}`}>{event.kind}</span><p>{event.message}</p></div>) : <div className="empty-state">Backend events appear as the simulation advances.</div>}
               </div></section>
             </div>
 
-            <section className="monitor-panel graph-panel"><div className="panel-heading"><div><span className="panel-kicker">LIVE RESOURCE ALLOCATION GRAPH</span><h2>Wait-for topology</h2></div><div className="graph-legend"><span><i className="legend-line allocation-line" />Allocation</span><span><i className="legend-line request-line" />Request</span></div></div><ResourceGraph model={model} run={run} /></section>
+            <section className="monitor-panel graph-panel"><div className="panel-heading"><div><span className="panel-kicker">RESOURCE DIAGRAM</span><h2>Who holds what</h2></div><div className="graph-legend"><span><i className="legend-line allocation-line" />Held</span><span><i className="legend-line request-line" />Waiting</span></div></div><ResourceGraph model={model} run={run} /></section>
           </section>
         </div>
       </main>
 
-      {resolutionOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setResolutionOpen(false); }}><section className="resolve-modal" role="dialog" aria-modal="true" aria-labelledby="resolve-title"><div className="modal-top"><span className="modal-alert"><AlertTriangle size={18} /></span><button type="button" className="icon-button" onClick={() => setResolutionOpen(false)} aria-label="Close recovery dialog"><X size={16} /></button></div><p className="panel-kicker">MANUAL RECOVERY</p><h2 id="resolve-title">Choose a process to terminate</h2><p className="modal-description">The backend will stop the selected process, release its resources, persist the recovery action, and resume the remaining processes.</p><label htmlFor="victim-process">Deadlocked process</label><select id="victim-process" value={resolutionProcess} onChange={event => setResolutionProcess(event.target.value)}>{resolutionCandidates.map(id => <option value={id} key={id}>{id}{runtimeAllocations.filter(item => item.process === id).length ? ` · holds ${runtimeAllocations.filter(item => item.process === id).map(item => item.resource).join(', ')}` : ''}</option>)}</select>{selectedVictim && <div className="recovery-preview"><span>RESOURCES TO RELEASE</span><strong>{victimResources.length ? victimResources.join(' · ') : 'None held'}</strong></div>}<div className="modal-actions"><button className="control-button" type="button" onClick={() => setResolutionOpen(false)}>Cancel</button><button className="resolve-button" type="button" onClick={resolveSelectedProcess} disabled={busy || !resolutionProcess}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}Resolve & resume</button></div></section></div>}
+      {resolutionOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setResolutionOpen(false); }}>
+        <section className="resolve-modal" role="dialog" aria-modal="true" aria-labelledby="resolve-title">
+          <div className="modal-top"><span className="modal-alert"><AlertTriangle size={18} /></span><button type="button" className="icon-button" onClick={() => setResolutionOpen(false)} aria-label="Close recovery dialog"><X size={16} /></button></div>
+          <p className="panel-kicker">03 · RECOVERY</p>
+          <h2 id="resolve-title">Choose a process to stop</h2>
+          <p className="modal-description">Its held resources will be freed so the other processes can continue.</p>
+          <label htmlFor="victim-process">Process to stop</label>
+          <select id="victim-process" value={resolutionProcess} onChange={event => setResolutionProcess(event.target.value)}>{resolutionCandidates.map(id => <option value={id} key={id}>{id}{runtimeAllocations.filter(item => item.process === id).length ? ` · holds ${runtimeAllocations.filter(item => item.process === id).map(item => item.resource).join(', ')}` : ''}</option>)}</select>
+          {selectedVictim && <div className="recovery-preview"><span>RESOURCES THAT WILL BE FREED</span><strong>{victimResources.length ? victimResources.join(' · ') : 'None held'}</strong></div>}
+          <div className="modal-actions"><button className="control-button" type="button" onClick={() => setResolutionOpen(false)}>Cancel</button><button className="resolve-button" type="button" onClick={resolveSelectedProcess} disabled={busy || !resolutionProcess}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}Stop process & continue</button></div>
+        </section>
+      </div>}
 
       <footer><span><HardDrive size={13} />{localMode ? 'Browser storage · device-local history' : 'SQLite database · durable run history'}</span><span>Virtual single-core scheduler · single-instance resources</span></footer>
     </div>
