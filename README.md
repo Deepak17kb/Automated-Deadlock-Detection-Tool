@@ -1,87 +1,61 @@
 # Deadlock Runtime Lab
 
-A browser-based operating-systems simulator. It uses the same virtual CPU, resource scheduler, and deadlock recovery logic in either browser-only mode or with the optional Node.js API.
+Deadlock Runtime Lab is an interactive operating-systems simulator for building resource-allocation scenarios, running a virtual CPU scheduler, and observing deadlock detection and recovery. It simulates processes only; it never inspects or controls real operating-system processes.
 
-> This project simulates processes. It does not inspect, pause, or terminate real operating-system processes.
+## Quick Start
 
-## Start Locally
-
-Requirements: Node.js 20.19+ or 22.12+.
+Recommended: Node.js 24.14.0 (the repository-pinned version in `.node-version`). Vite 7 requires Node.js 20.19+ or 22.12+.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal, normally `http://localhost:5173`. The API runs on `http://localhost:3001`.
+Open the Vite URL shown in the terminal, usually `http://localhost:5173`. The development API runs on `http://localhost:3001`.
 
-For a production build:
+1. Choose a starter system, or add processes and resources in **Set up a system**.
+2. Add held-resource links and waiting requests. Resource-to-process links mean a resource is held; process-to-resource links mean a process is waiting.
+3. Select **Start**. Use pause, single-step, speed, and reset controls to inspect scheduler behavior.
+4. Follow process states, resource queues, the event trace, and the live graph. Select a graph node to highlight its connections; zoom controls change the graph scale.
+5. When a wait-for cycle is found, choose a process to terminate and release its resources, then inspect the resumed run.
 
-```powershell
-npm run build
-npm start
-```
+## Run Modes and Data
 
-The Express server serves the production frontend and API on port `3001`. Set `PORT`, `HOST`, or `SIM_TICK_MS` to configure the server. The local API binds to `127.0.0.1` by default.
+The app checks for the local API at startup. When it is available, Express, Socket.IO, and SQLite provide simulation updates and durable scenario/run history. SQLite is created at `data/deadlock-lab.sqlite`; set `PORT`, `HOST`, or `SIM_TICK_MS` to configure the server. The API binds to `127.0.0.1` by default.
 
-## Free GitHub Pages Deployment
+If the API is unavailable, the simulator falls back to browser mode. Scenarios, drafts, and recent runs are saved in that browser profile's local storage; they do not sync between browsers or devices and are not a backup.
 
-The GitHub Actions workflow in `.github/workflows/deploy-pages.yml` builds and deploys the frontend automatically on pushes to `main`. The static site runs the full simulator in the browser; scenarios, current drafts, and recent run history save to that browser's local storage.
+## Model and Detection
 
-1. In GitHub, open **Settings > Pages** and select **GitHub Actions** as the build and deployment source.
-2. Push to `main`, or run **Deploy GitHub Pages** from the **Actions** tab.
-3. The workflow URL appears after the deployment completes. For this repository it is normally `https://deepak17kb.github.io/Automated-Deadlock-Detection-Tool/`.
-
-GitHub Pages is static hosting: this free deployment does not run Express, Socket.IO, or SQLite. Browser-mode saves are private to that browser profile and do not sync between devices.
-
-Vercel can also host the static frontend using `vercel.json`. Persistent shared storage and multi-device accounts require a separately hosted API/database.
-
-The API currently has no user authentication. Do not expose sensitive data through the public deployment; add an access gate before using it for private scenarios.
-
-## Simulation
-
-1. Pick a starter scenario or define processes, resources, allocations, and requests.
-2. Start the run. The simulator schedules CPU bursts in round-robin order and advances one virtual second per tick.
-3. Watch process states, resource owners, wait queues, the resource-allocation graph, and the event trace update live.
-4. If a wait-for cycle is detected, the run pauses and offers **Resolve deadlock**.
-5. Choose a process in the cycle and confirm. The simulator terminates it, releases its resources, records the recovery action, and resumes the remaining processes.
-
-The controls support pause, resume, single-step, reset, and live speed changes. Completed runs and previous runs remain available in the run history.
-
-## Model Boundaries
-
-- The scheduler currently simulates one virtual CPU core.
+- The scheduler uses one virtual CPU core and advances in virtual ticks.
 - Each resource has one exclusive instance and at most one holder.
-- A process runs a deterministic CPU burst, issues its configured requests in order, and releases held resources when it exits.
-- Deadlock detection uses strongly connected components in the wait-for graph.
-- Recovery is an explicit process termination action; this is not Banker's Algorithm and does not model arbitrary OS-level resource policies.
-- Static deployments have no account system; local data remains in the current browser. Do not treat local storage as a backup or shared database.
+- Processes run deterministic CPU bursts, issue configured requests in order, and release held resources when they exit.
+- The graph shows allocation edges from resource to process and request edges from process to resource. A wait-for cycle is highlighted as a deadlock.
+- Detection uses strongly connected components in the wait-for graph. Recovery explicitly terminates a selected process and releases its resources; the simulator does not implement Banker's Algorithm or general operating-system policies.
 
-## Storage
+## Deployment
 
-When the optional Node API is used locally, SQLite is created at `data/deadlock-lab.sqlite` and stores:
+GitHub Pages builds a static browser-mode app through the GitHub Actions workflow. In GitHub, set **Settings > Pages > Build and deployment** to **GitHub Actions**, then push to `main` or run **Deploy GitHub Pages** from the Actions tab. The site has no Express API, Socket.IO service, or shared SQLite database. Browser data remains local to each user. Vercel can also host the static frontend using `vercel.json`; shared storage requires a separately hosted API and database.
 
-- `scenarios`: named configurations and their resource/process model.
-- `simulation_runs`: current run state, status, scenario name, and tick snapshot.
-- `simulation_events`: durable CPU, request, grant, completion, deadlock, and recovery events.
-- `resolutions`: selected victim process and resources released during recovery.
+The API has no user authentication. Do not expose sensitive scenarios through a public deployment without adding an access gate.
 
-On GitHub Pages or Vercel static hosting, the same features use browser local storage instead. Those saves do not sync to other devices. The `data/` directory is ignored by Git.
-
-## Project Structure
-
-```text
-index.html          Vite frontend entry
-src/                React dashboard, API client, and styles
-server/index.js     Express REST API and Socket.IO server
-server/simulator.js Backend scheduler, model validation, and deadlock detection
-server/database.js  SQLite schema and persistence
-server/presets.js   Starter systems
-```
-
-## Verification
+## Development
 
 ```powershell
 npm test
 npm run build
+npm start
+```
+
+`npm start` serves the production frontend and API on port `3001` after a build.
+
+## Project Layout
+
+```text
+index.html          Vite frontend entry
+src/                React dashboard, API client, browser storage, and styles
+server/index.js     Express REST API and Socket.IO server
+server/simulator.js Scheduler, model validation, and deadlock detection
+server/database.js  SQLite schema and persistence
+server/presets.js   Starter systems
 ```

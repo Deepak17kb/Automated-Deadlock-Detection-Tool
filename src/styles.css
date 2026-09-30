@@ -238,20 +238,41 @@ input::placeholder { color: var(--quiet); }
 .legend-line { width: 15px; height: 2px; display: inline-block; }
 .allocation-line { background: var(--mint); }
 .request-line { background: repeating-linear-gradient(90deg, var(--amber) 0 3px, transparent 3px 6px); }
+.graph-tools { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 12px; border-bottom: 1px solid var(--line); }
+.graph-counts, .graph-actions { display: flex; align-items: center; gap: 7px; }
+.graph-counts { flex-wrap: wrap; color: var(--quiet); font: 8px var(--mono); }
+.graph-counts span { padding: 4px 6px; border: 1px solid var(--line); border-radius: 3px; }
+.graph-actions .icon-button { width: 29px; height: 29px; }
+.zoom-level { min-width: 34px; color: var(--muted); text-align: center; font: 8px var(--mono); }
+.graph-inspector { min-height: 38px; display: flex; align-items: center; gap: 9px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: rgba(128, 154, 176, .06); }
+.graph-inspector strong { color: var(--blue); font: 10px var(--mono); }
+.graph-inspector > span { flex: 1; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.graph-inspector .icon-button { width: 25px; height: 25px; }
 .graph-scroll { max-height: 420px; overflow: auto; }
 .rag-graph { width: 100%; min-width: 440px; display: block; }
 .graph-column-label { fill: var(--quiet); font: 9px var(--mono); letter-spacing: .07em; }
-.graph-edge { fill: none; stroke-width: 1.7; opacity: .78; }
+.graph-edge { fill: none; stroke-width: 1.7; opacity: .78; animation: graph-arrive .35s ease both; transition: opacity .2s ease, stroke-width .2s ease; }
 .graph-edge.allocation { stroke: var(--mint); }
-.graph-edge.request { stroke: var(--amber); stroke-dasharray: 5 4; }
+.graph-edge.request { stroke: var(--amber); stroke-dasharray: 5 4; animation: graph-arrive .35s ease both, request-flow 1.2s linear infinite; }
 .graph-edge.cycle { stroke: var(--red); stroke-width: 2.4; }
-#arrow-allocation path { fill: var(--mint); }
-#arrow-request path { fill: var(--amber); }
-.graph-process circle { fill: #18222a; stroke: var(--blue); stroke-width: 1.5; }
+.graph-edge.dimmed { opacity: .12; }
+.allocation-marker { fill: var(--mint); }
+.request-marker { fill: var(--amber); }
+.graph-process, .graph-resource { cursor: pointer; transition: opacity .2s ease; }
+.graph-process circle { fill: #18222a; stroke: var(--blue); stroke-width: 1.5; transition: fill .2s ease, stroke .2s ease, stroke-width .2s ease; }
 .graph-process text, .graph-resource text { fill: var(--ink); font: 9px var(--mono); }
-.graph-process.deadlocked circle { fill: rgba(210, 114, 108, .16); stroke: var(--red); stroke-width: 2; }
-.graph-resource rect { fill: #202b2b; stroke: var(--mint); stroke-width: 1.3; }
+.graph-process.deadlocked circle { fill: rgba(210, 114, 108, .16); stroke: var(--red); stroke-width: 2; animation: deadlock-pulse 1.8s ease-in-out infinite; }
+.graph-resource rect { fill: #202b2b; stroke: var(--mint); stroke-width: 1.3; transition: fill .2s ease, stroke .2s ease, stroke-width .2s ease; }
 .graph-resource.held rect { fill: #29231e; stroke: var(--amber); }
+.graph-process:focus-visible circle, .graph-resource:focus-visible rect, .graph-process.selected circle, .graph-resource.selected rect { stroke: var(--lime); stroke-width: 2.5; }
+.graph-process.dimmed, .graph-resource.dimmed { opacity: .28; }
+.graph-process.connected circle, .graph-resource.connected rect { filter: drop-shadow(0 0 4px rgba(200, 120, 82, .28)); }
+.graph-process:hover circle, .graph-resource:hover rect { stroke-width: 2.4; }
+.graph-empty { min-height: 110px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--quiet); font-size: 10px; }
+.graph-empty svg { color: var(--mint); }
+@keyframes graph-arrive { from { opacity: 0; } to { opacity: .78; } }
+@keyframes request-flow { to { stroke-dashoffset: -18; } }
+@keyframes deadlock-pulse { 50% { filter: drop-shadow(0 0 5px rgba(210, 114, 108, .55)); } }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 18px; background: rgba(7, 10, 12, .78); }
 .resolve-modal { width: min(460px, 100%); padding: 19px; border: 1px solid var(--line-bright); border-radius: 6px; background: #1a2125; }
@@ -313,6 +334,10 @@ footer svg { color: var(--mint); }
   .staged-banner button { margin-left: 23px; }
   .graph-panel .panel-heading { flex-direction: row; align-items: center; }
   .graph-legend { flex-wrap: wrap; }
+  .graph-tools { align-items: flex-start; flex-direction: column; }
+  .graph-counts { gap: 4px; }
+  .graph-actions { align-self: flex-end; }
+  .graph-inspector { align-items: flex-start; }
   footer { flex-direction: column; padding: 12px 14px 18px; }
 }
 @media (prefers-reduced-motion: reduce) {

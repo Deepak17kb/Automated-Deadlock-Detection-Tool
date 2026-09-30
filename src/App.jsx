@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   Activity, AlertTriangle, ArrowDownToLine, ArrowRight, Boxes, Check,
   CircleHelp, Clock3, Cpu, Database, HardDrive, Layers3, ListRestart, LoaderCircle,
-  Pause, Play, Plus, RotateCcw, Save, ShieldCheck, SkipForward, Trash2, Wifi, WifiOff, X
+  LocateFixed, Pause, Play, Plus, RotateCcw, Save, ShieldCheck, SkipForward,
+  Trash2, Wifi, WifiOff, X, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { api, post, socket } from './api.js';
 import { advanceSimulation, createSimulation, resolveDeadlock } from '../server/simulator.js';
@@ -32,6 +33,9 @@ function statePercent(process) {
 }
 
 function ResourceGraph({ model, run }) {
+  const graphId = useId().replace(/:/g, '');
+  const [zoom, setZoom] = useState(1);
+  const [selectedNode, setSelectedNode] = useState(null);
   const processes = run?.processes || model.processes.map(id => ({ id, status: 'ready' }));
   const resources = run?.model.resources || model.resources;
   const allocations = run?.allocations || model.allocations;
@@ -40,14 +44,49 @@ function ResourceGraph({ model, run }) {
   const processY = new Map(processes.map((process, index) => [process.id, processes.length === 1 ? height / 2 : 42 + index * (height - 84) / (processes.length - 1)]));
   const resourceY = new Map(resources.map((resource, index) => [resource, resources.length === 1 ? height / 2 : 42 + index * (height - 84) / (resources.length - 1)]));
   const blocked = new Set(run?.deadlocks?.flatMap(cycle => cycle.processes) || []);
+  const hasSelection = selectedNode !== null;
+  const edgeIsSelected = (process, resource) => !hasSelection || selectedNode.id === process || selectedNode.id === resource;
+  const nodeClass = (type, id) => {
+    if (!hasSelection) return '';
+    const connected = type === 'process'
+      ? allocations.some(edge => edge.process === id && edge.resource === selectedNode.id) || requests.some(edge => edge.process === id && edge.resource === selectedNode.id) || selectedNode.id === id
+      : allocations.some(edge => edge.resource === id && edge.process === selectedNode.id) || requests.some(edge => edge.resource === id && edge.process === selectedNode.id) || selectedNode.id === id;
+    return `${connected ? 'connected' : 'dimmed'} ${selectedNode.type === type && selectedNode.id === id ? 'selected' : ''}`;
+  };
+  const selectNode = (type, id) => setSelectedNode(current => current?.type === type && current.id === id ? null : { type, id });
+  const activateNode = (event, type, id) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectNode(type, id);
+    }
+  };
+  const selectedProcess = selectedNode?.type === 'process' ? processes.find(process => process.id === selectedNode.id) : null;
+  const selectedResource = selectedNode?.type === 'resource' ? selectedNode.id : null;
+  const selectedDetails = selectedProcess
+    ? `${statusLabel(selectedProcess.status)} · holds ${allocations.filter(edge => edge.process === selectedProcess.id).map(edge => edge.resource).join(', ') || 'none'} · waiting for ${requests.filter(edge => edge.process === selectedProcess.id).map(edge => edge.resource).join(', ') || 'nothing'}`
+    : selectedResource
+      ? `${allocations.find(edge => edge.resource === selectedResource)?.process || 'Available'} · ${requests.filter(edge => edge.resource === selectedResource).map(edge => edge.process).join(', ') || 'no waiters'}`
+      : '';
 
   return (
-    <div className="graph-scroll">
-      <svg className="rag-graph" viewBox={`0 0 720 ${height}`} role="img" aria-label="Live resource allocation graph">
+    <>
+      <div className="graph-tools">
+        <div className="graph-counts" aria-live="polite"><span>{processes.length} processes</span><span>{resources.length} resources</span><span>{allocations.length} held</span><span>{requests.length} waiting</span></div>
+        <div className="graph-actions">
+          <button className="icon-button" type="button" title="Zoom out" aria-label="Zoom out graph" disabled={zoom <= .75} onClick={() => setZoom(current => Math.max(.75, current - .25))}><ZoomOut size={14} /></button>
+          <span className="zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</span>
+          <button className="icon-button" type="button" title="Zoom in" aria-label="Zoom in graph" disabled={zoom >= 1.5} onClick={() => setZoom(current => Math.min(1.5, current + .25))}><ZoomIn size={14} /></button>
+          <button className="icon-button" type="button" title="Reset zoom and selection" aria-label="Reset graph view" disabled={zoom === 1 && !selectedNode} onClick={() => { setZoom(1); setSelectedNode(null); }}><LocateFixed size={14} /></button>
+        </div>
+      </div>
+      {selectedDetails && <div className="graph-inspector" aria-live="polite"><strong>{selectedNode.id}</strong><span>{selectedDetails}</span><button className="icon-button" type="button" title="Clear selection" aria-label="Clear graph selection" onClick={() => setSelectedNode(null)}><X size={13} /></button></div>}
+      {processes.length || resources.length ? <div className="graph-scroll">
+      <svg className="rag-graph" viewBox={`0 0 720 ${height}`} role="img" aria-label="Interactive resource allocation graph. Select a process or resource to highlight its connections.">
         <defs>
-          <marker id="arrow-allocation" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
-          <marker id="arrow-request" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
+          <marker id={`${graphId}-allocation`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path className="allocation-marker" d="M 0 0 L 10 5 L 0 10 z" /></marker>
+          <marker id={`${graphId}-request`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path className="request-marker" d="M 0 0 L 10 5 L 0 10 z" /></marker>
         </defs>
+        <g transform={`translate(${360 * (1 - zoom)} ${height / 2 * (1 - zoom)}) scale(${zoom})`}>
         <text className="graph-column-label" x="150" y="22" textAnchor="middle">PROCESSES</text>
         <text className="graph-column-label" x="570" y="22" textAnchor="middle">RESOURCES</text>
         {allocations.map((edge, index) => {
@@ -55,21 +94,22 @@ function ResourceGraph({ model, run }) {
           const y2 = processY.get(edge.process);
           if (y1 === undefined || y2 === undefined) return null;
           const isCycle = blocked.has(edge.process);
-          return <path key={`a-${edge.resource}-${edge.process}-${index}`} className={`graph-edge allocation ${isCycle ? 'cycle' : ''}`} d={`M 532 ${y1} C 420 ${y1}, 300 ${y2}, 188 ${y2}`} markerEnd="url(#arrow-allocation)" />;
+          return <path key={`a-${edge.resource}-${edge.process}-${index}`} className={`graph-edge allocation ${isCycle ? 'cycle' : ''} ${hasSelection && !edgeIsSelected(edge.process, edge.resource) ? 'dimmed' : ''}`} d={`M 532 ${y1} C 420 ${y1}, 300 ${y2}, 188 ${y2}`} markerEnd={`url(#${graphId}-allocation)`}><title>{edge.resource} is held by {edge.process}</title></path>;
         })}
         {requests.map((edge, index) => {
           const y1 = processY.get(edge.process);
           const y2 = resourceY.get(edge.resource);
           if (y1 === undefined || y2 === undefined) return null;
-          return <path key={`r-${edge.process}-${edge.resource}-${index}`} className="graph-edge request" d={`M 188 ${y1} C 310 ${y1}, 420 ${y2}, 532 ${y2}`} markerEnd="url(#arrow-request)" />;
+          return <path key={`r-${edge.process}-${edge.resource}-${index}`} className={`graph-edge request ${hasSelection && !edgeIsSelected(edge.process, edge.resource) ? 'dimmed' : ''}`} d={`M 188 ${y1} C 310 ${y1}, 420 ${y2}, 532 ${y2}`} markerEnd={`url(#${graphId}-request)`}><title>{edge.process} is waiting for {edge.resource}</title></path>;
         })}
         {processes.map(process => {
           const y = processY.get(process.id);
           const isDeadlocked = blocked.has(process.id);
           return (
-            <g key={`p-${process.id}`} className={`graph-process ${isDeadlocked ? 'deadlocked' : ''}`}>
+            <g key={`p-${process.id}`} className={`graph-process ${isDeadlocked ? 'deadlocked' : ''} ${nodeClass('process', process.id)}`} role="button" tabIndex="0" aria-label={`Process ${process.id}, ${statusLabel(process.status)}. Select to highlight connections.`} aria-pressed={selectedNode?.type === 'process' && selectedNode.id === process.id} onClick={() => selectNode('process', process.id)} onKeyDown={event => activateNode(event, 'process', process.id)}>
               <circle cx="150" cy={y} r="24" />
               <text x="150" y={y + 4} textAnchor="middle">{process.id}</text>
+              <title>{process.id} · {statusLabel(process.status)}</title>
             </g>
           );
         })}
@@ -77,14 +117,17 @@ function ResourceGraph({ model, run }) {
           const y = resourceY.get(resource);
           const owner = allocations.find(edge => edge.resource === resource)?.process;
           return (
-            <g key={`r-${resource}`} className={`graph-resource ${owner ? 'held' : ''}`}>
+            <g key={`r-${resource}`} className={`graph-resource ${owner ? 'held' : ''} ${nodeClass('resource', resource)}`} role="button" tabIndex="0" aria-label={`Resource ${resource}, ${owner ? `held by ${owner}` : 'available'}. Select to highlight connections.`} aria-pressed={selectedNode?.type === 'resource' && selectedNode.id === resource} onClick={() => selectNode('resource', resource)} onKeyDown={event => activateNode(event, 'resource', resource)}>
               <rect x="532" y={y - 16} width="76" height="32" rx="5" />
               <text x="570" y={y + 4} textAnchor="middle">{resource}</text>
+              <title>{resource} · {owner ? `held by ${owner}` : 'available'}</title>
             </g>
           );
         })}
+        </g>
       </svg>
-    </div>
+      </div> : <div className="graph-empty"><Boxes size={17} /><span>Add a process and a resource to build the graph.</span></div>}
+    </>
   );
 }
 
@@ -570,7 +613,7 @@ function App() {
                   <select id="allocation-resource" aria-label="Resource to allocate" value={allocationResource} onChange={event => setAllocationResource(event.target.value)}><option value="">Resource</option>{model.resources.map(value => <option key={value}>{value}</option>)}</select>
                   <ArrowRight size={14} />
                   <select id="allocation-process" value={allocationProcess} onChange={event => setAllocationProcess(event.target.value)}><option value="">Process</option>{model.processes.map(value => <option key={value}>{value}</option>)}</select>
-                  <button className="icon-button add-button" type="button" aria-label="Add allocation" onClick={addAllocation}><Plus size={16} /></button>
+                  <button className="icon-button add-button" type="button" aria-label="Add allocation" title="Add allocation" disabled={!allocationResource || !allocationProcess} onClick={addAllocation}><Plus size={16} /></button>
                 </div>
                 <div className="relation-list">{model.allocations.map((item, index) => <div className="relation-chip" key={`${item.resource}-${item.process}`}><span>{item.resource} <ArrowRight size={11} /> {item.process}</span><button type="button" onClick={() => removeRelation('allocations', index)} aria-label={`Remove allocation ${item.resource} to ${item.process}`}><X size={12} /></button></div>)}</div>
               </div>
@@ -580,7 +623,7 @@ function App() {
                   <select id="request-process" value={requestProcess} onChange={event => setRequestProcess(event.target.value)}><option value="">Process</option>{model.processes.map(value => <option key={value}>{value}</option>)}</select>
                   <ArrowRight size={14} />
                   <select id="request-resource" aria-label="Requested resource" value={requestResource} onChange={event => setRequestResource(event.target.value)}><option value="">Resource</option>{model.resources.map(value => <option key={value}>{value}</option>)}</select>
-                  <button className="icon-button add-button" type="button" aria-label="Add request" onClick={addRequest}><Plus size={16} /></button>
+                  <button className="icon-button add-button" type="button" aria-label="Add request" title="Add request" disabled={!requestProcess || !requestResource} onClick={addRequest}><Plus size={16} /></button>
                 </div>
                 <div className="relation-list">{model.requests.map((item, index) => <div className="relation-chip request-chip" key={`${item.process}-${item.resource}`}><span>{item.process} <ArrowRight size={11} /> {item.resource}</span><button type="button" onClick={() => removeRelation('requests', index)} aria-label={`Remove request from ${item.process} to ${item.resource}`}><X size={12} /></button></div>)}</div>
               </div>
