@@ -1,150 +1,73 @@
-# 🔒 Automated Deadlock Detection Tool
+# Deadlock Runtime Lab
 
-A browser-based tool to simulate, detect, and resolve **deadlock conditions** in operating system processes using Resource Allocation Graph analysis and DFS-based cycle detection.
+A full-stack operating-systems simulator. A Node.js backend advances a virtual CPU and resource scheduler, broadcasts live state over Socket.IO, and stores scenarios, run snapshots, execution events, and recovery actions in SQLite. The React dashboard lets you inspect a deadlock and choose how to resolve it.
 
-![Status](https://img.shields.io/badge/status-active-brightgreen)
-![Tech](https://img.shields.io/badge/built%20with-HTML%20%7C%20CSS%20%7C%20JavaScript-orange)
-![License](https://img.shields.io/badge/license-MIT-blue)
+> This project simulates processes. It does not inspect, pause, or terminate real operating-system processes.
 
----
+## Start Locally
 
-## 📌 Overview
+Requirements: Node.js 20.19+ or 22.12+.
 
-The **Automated Deadlock Detection Tool** is a single-file, zero-dependency web application that lets you model an OS-like system with processes and resources, then automatically detects whether a deadlock exists. It visualizes the **Resource Allocation Graph (RAG)** in real time and suggests resolution strategies when circular wait conditions are found.
-
----
-
-## 🎯 Features
-
-- ✅ Add/remove **Processes** and **Resources** dynamically
-- ✅ Define **Allocations** (resource held by process) and **Requests** (process waiting for resource)
-- ✅ Automatic **deadlock detection** using DFS cycle detection on a Wait-For Graph
-- ✅ Real-time **Resource Allocation Graph** rendered on HTML5 Canvas
-- ✅ Color-coded graph — blue (processes), green (resources), red (deadlocked nodes)
-- ✅ Displays exact **circular wait cycle path** (e.g., `P1 → P2 → P3 → P1`)
-- ✅ Shows all four **Coffman Conditions** when deadlock is found
-- ✅ Suggests **resolution strategies** (termination, preemption, ordering, Banker's Algorithm)
-- ✅ Built-in **preset scenarios** for quick demo
-- ✅ Fully responsive, works on any modern browser — no install required
-
----
-
-## 🚀 Getting Started
-
-### Run Locally
-
-```bash
-# Clone the repository
-git clone https://github.com/Deepak17kb/Automated-Deadlock-Detection-Tool.git
-
-# Open the file in your browser
-open deadlock-detector.html
+```powershell
+npm install
+npm run dev
 ```
 
-No server, no npm, no dependencies — just open the `.html` file directly in any browser.
+Open the Vite URL printed in the terminal, normally `http://localhost:5173`. The API runs on `http://localhost:3001`.
 
----
+For a production build:
 
-## 🖥️ How to Use
-
-1. **Add Processes** — Enter process names like `P1`, `P2`, `P3` and click **+ Add**
-2. **Add Resources** — Enter resource names like `R1`, `R2`, `Fork1` and click **+ Add**
-3. **Add Allocations** — Select which resource is currently **held by** which process (e.g., `R1 → P1`)
-4. **Add Requests** — Select which process is currently **waiting for** which resource (e.g., `P1 → R2`)
-5. Click **⬡ Run Deadlock Detection**
-6. View results in the graph and results panel
-
----
-
-## 📥 Input & 📤 Output
-
-| Input | Description |
-|---|---|
-| Processes | Running programs competing for resources (e.g., P1, P2) |
-| Resources | Shared system assets (e.g., R1, R2, Fork1) |
-| Allocations | Resource currently held by a process (R1 → P1) |
-| Requests | Process currently waiting for a resource (P1 → R2) |
-
-| Output | Description |
-|---|---|
-| Resource Allocation Graph | Live canvas with color-coded nodes and arrows |
-| SAFE / DEADLOCK badge | Instant system status |
-| Cycle path | Exact deadlock chain (e.g., P1 → P2 → P1) |
-| Coffman Conditions | Confirms all 4 deadlock conditions |
-| Resolution strategies | Actionable steps to break the deadlock |
-
----
-
-## 🎛️ Preset Scenarios
-
-| Preset | Processes | Resources | Result |
-|---|---|---|---|
-| Classic (2P) | P1, P2 | R1, R2 | 🔴 Deadlock |
-| Dining Philosophers (3P) | P1, P2, P3 | Fork1, Fork2, Fork3 | 🔴 Deadlock |
-| Chain (4P) | P1, P2, P3, P4 | R1, R2, R3, R4 | 🔴 Deadlock |
-| Safe State | P1, P2, P3 | R1, R2 | ✅ Safe |
-
----
-
-## ⚙️ Algorithm
-
-```
-1. Build Wait-For Graph from allocations + requests
-   → If P waits for R, and R is held by Q → add edge P → Q
-
-2. Run DFS on every process node
-   → If a node is revisited on the current path → CYCLE FOUND = DEADLOCK
-
-3. Deduplicate all found cycles
-
-4. Mark deadlocked nodes/edges red on the canvas
-
-5. Generate resolution strategies for each cycle
+```powershell
+npm run build
+npm start
 ```
 
----
+The Express server serves the production frontend and API on port `3001`. Set `PORT`, `HOST`, or `SIM_TICK_MS` to configure the server. The local API binds to `127.0.0.1` by default.
 
-## 🛠️ Tech Stack
+## Simulation
 
-| Technology | Usage |
-|---|---|
-| HTML5 | Page structure and layout |
-| CSS3 | Dark theme, responsive grid, animations |
-| Vanilla JavaScript | Core logic — DFS algorithm, graph management |
-| HTML5 Canvas API | Real-time RAG visualization |
-| Google Fonts | JetBrains Mono + Syne typography |
+1. Pick a starter scenario or define processes, resources, allocations, and requests.
+2. Start the run. The backend schedules CPU bursts in round-robin order and advances one virtual second per tick.
+3. Watch process states, resource owners, wait queues, the resource-allocation graph, and the persisted event trace update live.
+4. If the backend detects a wait-for cycle, the run pauses and offers **Resolve deadlock**.
+5. Choose a process in the cycle and confirm. The backend terminates it, releases its resources, records the recovery action, and resumes the remaining processes.
 
----
+The controls support pause, resume, single-step, reset, and live speed changes. Completed runs and previous runs remain available in the run history.
 
-## 📚 Concepts Covered
+## Model Boundaries
 
-- Deadlock and the four **Coffman Conditions** (Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait)
-- **Resource Allocation Graph (RAG)** construction and interpretation
-- **Wait-For Graph** derivation
-- **DFS-based Cycle Detection**
-- **Deadlock Prevention, Avoidance, and Recovery**
-- **Banker's Algorithm** for safe state verification
-- **Dining Philosophers Problem**
+- The scheduler currently simulates one virtual CPU core.
+- Each resource has one exclusive instance and at most one holder.
+- A process runs a deterministic CPU burst, issues its configured requests in order, and releases held resources when it exits.
+- Deadlock detection uses strongly connected components in the wait-for graph.
+- Recovery is an explicit process termination action; this is not Banker's Algorithm and does not model arbitrary OS-level resource policies.
+- There is no user authentication. Run this as a local development tool; add authentication and access control before exposing the API to a network.
 
----
+## Storage
 
-## 📁 Project Structure
+SQLite is created automatically at `data/deadlock-lab.sqlite`. The database stores:
 
+- `scenarios`: named configurations and their resource/process model.
+- `simulation_runs`: current run state, status, scenario name, and tick snapshot.
+- `simulation_events`: durable CPU, request, grant, completion, deadlock, and recovery events.
+- `resolutions`: selected victim process and resources released during recovery.
+
+The `data/` directory is ignored by Git. Back it up to preserve local scenarios and run history.
+
+## Project Structure
+
+```text
+index.html          Vite frontend entry
+src/                React dashboard, API client, and styles
+server/index.js     Express REST API and Socket.IO server
+server/simulator.js Backend scheduler, model validation, and deadlock detection
+server/database.js  SQLite schema and persistence
+server/presets.js   Starter systems
 ```
-Automated-Deadlock-Detection-Tool/
-│
-└── deadlock-detector.html     # Complete single-file application
-└── README.md                  # Project documentation
+
+## Verification
+
+```powershell
+npm test
+npm run build
 ```
-
----
-
-## 👨‍💻 Author
-
-**Deepak** — [@Deepak17kb](https://github.com/Deepak17kb)
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
