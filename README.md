@@ -1,61 +1,138 @@
 # Deadlock Runtime Lab
 
-Deadlock Runtime Lab is an interactive operating-systems simulator for building resource-allocation scenarios, running a virtual CPU scheduler, and observing deadlock detection and recovery. It simulates processes only; it never inspects or controls real operating-system processes.
+### A resource-allocation graph you can run, inspect, and recover.
+
+Build operating-systems scenarios and watch a deterministic virtual scheduler expose resource contention and deadlocks. This project simulates processes; it does not inspect or control processes on your machine.
+
+<p>
+  <img alt="Node.js 24.14" src="https://img.shields.io/badge/Node.js-24.14.0-339933?logo=nodedotjs&logoColor=white">
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white">
+  <img alt="Vite 7" src="https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white">
+  <img alt="Express 5" src="https://img.shields.io/badge/API-Express%205-111111?logo=express&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/Storage-SQLite-003B57?logo=sqlite&logoColor=white">
+</p>
+
+[Launch the app](https://deepak17kb.github.io/Automated-Deadlock-Detection-Tool/) · [Quick start](#quick-start) · [Architecture](#architecture) · [Model](#simulation-model)
+
+## At a Glance
+
+- **Configure:** compose processes, single-instance resources, allocations, and requests, or start from a built-in scenario.
+- **Observe:** inspect CPU scheduling, process state, resource ownership, wait queues, and the event trace as virtual time advances.
+- **Explore:** select graph nodes to trace dependencies; zoom, inspect edge direction, and see requests animate through the graph.
+- **Recover:** choose a deadlocked process to terminate, release its resources, and continue the run.
+- **Run anywhere:** use the local SQLite-backed API or browser-only mode with device-local storage.
+
+## Architecture
+
+The simulator module is shared by the API runtime and the browser fallback. The API is optional for running the simulation, but provides durable local history and live server updates.
+
+```mermaid
+flowchart LR
+	subgraph Browser[Browser client]
+		UI[React dashboard]
+		Local[(localStorage)]
+		UI --> Local
+	end
+
+	subgraph Core[Shared module · server/simulator.js]
+		Engine[Scheduler + deadlock detection]
+	end
+
+	subgraph LocalService[Optional API runtime]
+		API[Express API]
+		Socket[Socket.IO updates]
+		DB[(SQLite)]
+		API --> Engine
+		API --> DB
+		API <--> Socket
+	end
+
+	UI -->|browser mode| Engine
+	UI <-->|REST| API
+	Socket -->|run events| UI
+```
+
+```text
+src/App.jsx  ── UI, controls, graph, run-mode selection
+	  │
+	  ├── src/localStore.js ── browser drafts, scenarios, run history
+	  ├── src/api.js        ── REST + Socket.IO client
+	  │
+	  └── server/simulator.js ── model validation, scheduler, deadlock detection
+					│
+					├── server/index.js    ── Express + Socket.IO
+					└── server/database.js ── SQLite persistence
+```
 
 ## Quick Start
 
-Recommended: Node.js 24.14.0 (the repository-pinned version in `.node-version`). Vite 7 requires Node.js 20.19+ or 22.12+.
+Use Node.js `24.14.0`, pinned in `.node-version`. Vite 7 requires Node.js `20.19+` or `22.12+`.
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal, usually `http://localhost:5173`. The development API runs on `http://localhost:3001`.
+Open the Vite URL printed in the terminal, normally `http://localhost:5173`. The development API listens on `http://localhost:3001`.
 
-1. Choose a starter system, or add processes and resources in **Set up a system**.
-2. Add held-resource links and waiting requests. Resource-to-process links mean a resource is held; process-to-resource links mean a process is waiting.
-3. Select **Start**. Use pause, single-step, speed, and reset controls to inspect scheduler behavior.
-4. Follow process states, resource queues, the event trace, and the live graph. Select a graph node to highlight its connections; zoom controls change the graph scale.
-5. When a wait-for cycle is found, choose a process to terminate and release its resources, then inspect the resumed run.
+1. Load **Classic deadlock**, **Dining philosophers**, or **Safe completion**, or build a system in the setup panel.
+2. Add allocation edges from resource to process and request edges from process to resource.
+3. Start the run. Pause, step, reset, or change the tick speed while watching the dashboard update.
+4. Select a process or resource in the graph to inspect its connections. Use the zoom controls to change the view.
+5. Resolve a detected cycle by terminating one of its processes; the freed resources can unblock the remaining work.
 
-## Run Modes and Data
+## Deadlock Graph
 
-The app checks for the local API at startup. When it is available, Express, Socket.IO, and SQLite provide simulation updates and durable scenario/run history. SQLite is created at `data/deadlock-lab.sqlite`; set `PORT`, `HOST`, or `SIM_TICK_MS` to configure the server. The API binds to `127.0.0.1` by default.
+An allocation edge points **resource → process**. A request edge points **process → resource**. The classic preset forms this alternating cycle:
 
-If the API is unavailable, the simulator falls back to browser mode. Scenarios, drafts, and recent runs are saved in that browser profile's local storage; they do not sync between browsers or devices and are not a backup.
+```mermaid
+flowchart LR
+	P1((P1)) -->|requests| R2[R2]
+	R2 -->|allocated to| P2((P2))
+	P2 -->|requests| R1[R1]
+	R1 -->|allocated to| P1
+	classDef process fill:#18222a,stroke:#809ab0,color:#e9edf0
+	classDef resource fill:#29231e,stroke:#d2a06b,color:#e9edf0
+	class P1,P2 process
+	class R1,R2 resource
+```
 
-## Model and Detection
+The runtime derives a wait-for graph from resource ownership and outstanding requests, then finds strongly connected components. A cycle represents processes waiting on one another. Recovery is explicit process termination; this is not Banker's Algorithm or a model of arbitrary operating-system policies.
 
-- The scheduler uses one virtual CPU core and advances in virtual ticks.
-- Each resource has one exclusive instance and at most one holder.
-- Processes run deterministic CPU bursts, issue configured requests in order, and release held resources when they exit.
-- The graph shows allocation edges from resource to process and request edges from process to resource. A wait-for cycle is highlighted as a deadlock.
-- Detection uses strongly connected components in the wait-for graph. Recovery explicitly terminates a selected process and releases its resources; the simulator does not implement Banker's Algorithm or general operating-system policies.
+## Simulation Model
 
-## Deployment
+- One virtual CPU core; scheduler time advances in discrete ticks.
+- One exclusive instance per resource, with at most one holder.
+- Deterministic CPU bursts; each process issues its configured requests in order.
+- Held resources are released when a process exits or is selected for deadlock recovery.
+- Completed runs and recent history are available to inspect or restore.
 
-GitHub Pages builds a static browser-mode app through the GitHub Actions workflow. In GitHub, set **Settings > Pages > Build and deployment** to **GitHub Actions**, then push to `main` or run **Deploy GitHub Pages** from the Actions tab. The site has no Express API, Socket.IO service, or shared SQLite database. Browser data remains local to each user. Vercel can also host the static frontend using `vercel.json`; shared storage requires a separately hosted API and database.
+## Run Modes and Storage
 
-The API has no user authentication. Do not expose sensitive scenarios through a public deployment without adding an access gate.
+At startup the app checks whether the API is reachable.
+
+- **Local API:** Express and Socket.IO wrap the shared simulator; SQLite persists scenarios and run history at `data/deadlock-lab.sqlite`.
+- **Browser fallback:** the same simulator runs in the browser; drafts, scenarios, and runs use `localStorage`.
+- **Static deployment:** GitHub Pages and static Vercel use browser mode; neither runs the API or SQLite.
+
+Browser data is scoped to the current profile. It does not sync between devices and is not a backup. Configure the local server with `PORT`, `HOST`, and `SIM_TICK_MS`; the default bind address is `127.0.0.1`.
 
 ## Development
 
 ```powershell
-npm test
-npm run build
-npm start
+npm test          # Node test runner
+npm run build     # production frontend in dist/
+npm start         # serve production frontend + API on port 3001
 ```
 
-`npm start` serves the production frontend and API on port `3001` after a build.
+`npm start` expects a production build first. The GitHub Pages workflow runs `npm ci` and `npm run build` on pushes to `main` and manual dispatches. Pages is static hosting: it does not run Express, Socket.IO, or SQLite. Enable **Settings → Pages → Build and deployment → GitHub Actions** to publish.
 
-## Project Layout
+## Configuration
 
-```text
-index.html          Vite frontend entry
-src/                React dashboard, API client, browser storage, and styles
-server/index.js     Express REST API and Socket.IO server
-server/simulator.js Scheduler, model validation, and deadlock detection
-server/database.js  SQLite schema and persistence
-server/presets.js   Starter systems
-```
+- `PORT`: HTTP API port; defaults to `3001`.
+- `HOST`: bind address; defaults to `127.0.0.1`.
+- `SIM_TICK_MS`: server simulation tick interval; uses the server default when unset.
+
+## Security Note
+
+The API has no user authentication. Do not expose it or sensitive scenario data publicly without adding an access-control layer. The simulator only models virtual processes; it never signals or terminates OS processes.
