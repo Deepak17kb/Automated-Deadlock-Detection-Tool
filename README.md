@@ -24,6 +24,21 @@ npm start
 
 The Express server serves the production frontend and API on port `3001`. Set `PORT`, `HOST`, or `SIM_TICK_MS` to configure the server. The local API binds to `127.0.0.1` by default.
 
+## Deploy On Render
+
+The `render.yaml` Blueprint deploys the frontend and Node API as one service. It also mounts a persistent disk at `data/`, where SQLite stores scenarios and run history. Since SQLite must survive deploys and restarts, this configuration uses Render's paid `0.5c-512mb` compute plan and a 1 GB persistent disk.
+
+1. Sign in to Render and choose **New > Blueprint**.
+2. Connect `Deepak17kb/Automated-Deadlock-Detection-Tool` and select `main`.
+3. Review `render.yaml`; confirm the service and persistent disk pricing before creating resources.
+4. Render builds the Vite frontend, starts Express, checks `/api/health`, and deploys future pushes to `main` automatically.
+
+Render assigns the public `onrender.com` URL after provisioning. The repository's `CNAME` file does not configure Render DNS. To use `deadlock-detection.com`, add it as a custom domain in the Render service and update DNS using the records Render provides.
+
+Vercel is not required for this setup. It can host a static frontend, but this app's live Socket.IO backend and SQLite database still need a persistent Node host.
+
+The API currently has no user authentication. Do not expose sensitive data through the public deployment; add an access gate before using it for private scenarios.
+
 ## Simulation
 
 1. Pick a starter scenario or define processes, resources, allocations, and requests.
