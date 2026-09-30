@@ -1,6 +1,9 @@
-import { randomUUID } from 'node:crypto';
-
 const MAX_ITEMS = 50;
+
+function createId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
 
 export function normalizeModel(input) {
   if (!input || !Array.isArray(input.processes) || !Array.isArray(input.resources)
@@ -53,7 +56,7 @@ export function normalizeModel(input) {
   return { processes, resources, allocations, requests };
 }
 
-export function createSimulation(model, id = randomUUID(), scenarioName = 'Untitled scenario') {
+export function createSimulation(model, id = createId(), scenarioName = 'Untitled scenario') {
   const normalized = normalizeModel(model);
   const processes = normalized.processes.map((process, index) => {
     const work = 2 + index % 2;

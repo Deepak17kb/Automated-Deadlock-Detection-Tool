@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Activity, AlertTriangle, ArrowDownToLine, ArrowRight, Boxes, Check,
   CircleHelp, Clock3, Cpu, Database, HardDrive, Layers3, ListRestart, LoaderCircle,
   Pause, Play, Plus, RotateCcw, Save, ShieldCheck, SkipForward, Trash2, Wifi, WifiOff, X
 } from 'lucide-react';
 import { api, post, socket } from './api.js';
+import { advanceSimulation, createSimulation, resolveDeadlock } from '../server/simulator.js';
+import { presets as starterPresets } from '../server/presets.js';
+import {
+  deleteBrowserScenario, listBrowserRuns, listBrowserScenarios, loadBrowserRun,
+  loadBrowserWorkspace, saveBrowserDraft, saveBrowserRun, saveBrowserScenario
+} from './localStore.js';
 
 const emptyModel = { processes: [], resources: [], allocations: [], requests: [] };
 
@@ -84,6 +90,7 @@ function ResourceGraph({ model, run }) {
 
 function App() {
   const [apiOnline, setApiOnline] = useState(false);
+  const [localMode, setLocalMode] = useState(false);
   const [socketOnline, setSocketOnline] = useState(false);
   const [presets, setPresets] = useState([]);
   const [scenarios, setScenarios] = useState([]);
@@ -104,21 +111,38 @@ function App() {
   const [speed, setSpeed] = useState(900);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const timerRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([api('/api/health'), api('/api/presets'), api('/api/scenarios'), api('/api/simulations')])
-      .then(([health, presetData, scenarioData, runData]) => {
+    api('/api/health')
+      .then(async health => {
+        if (health.status !== 'ok') throw new Error('Backend is unavailable');
+        const [presetData, scenarioData, runData] = await Promise.all([api('/api/presets'), api('/api/scenarios'), api('/api/simulations')]);
         if (!mounted) return;
         setApiOnline(health.status === 'ok');
+        setLocalMode(false);
         setPresets(presetData);
         setScenarios(scenarioData);
         setRecentRuns(runData);
+        socket.connect();
       })
       .catch(error => {
         if (!mounted) return;
         setApiOnline(false);
-        setNotice(`Backend unavailable: ${error.message}`);
+        setLocalMode(true);
+        setSocketOnline(false);
+        const workspace = loadBrowserWorkspace();
+        setPresets(Object.entries(starterPresets).map(([id, preset]) => ({ id, ...preset })));
+        setScenarios(workspace.scenarios);
+        setRecentRuns(listBrowserRuns());
+        if (workspace.draft) setModel(workspace.draft);
+        if (workspace.currentRun) {
+          setRun(workspace.currentRun);
+          setModel(workspace.currentRun.model);
+          setScenarioName(workspace.currentRun.scenarioName);
+        }
+        setNotice('Free browser mode: simulation and saves stay in this browser on this device.');
       });
 
     const onConnect = () => setSocketOnline(true);
@@ -127,15 +151,42 @@ function App() {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('simulation:update', onUpdate);
-    socket.connect();
     return () => {
       mounted = false;
+      if (timerRef.current) clearInterval(timerRef.current);
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('simulation:update', onUpdate);
       socket.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (localMode) {
+      try { saveBrowserDraft(model); } catch (error) { setNotice(`Could not save browser data: ${error.message}`); }
+    }
+  }, [localMode, model]);
+
+  useEffect(() => {
+    if (!localMode || !['running', 'waiting'].includes(run?.status)) return undefined;
+    timerRef.current = setInterval(() => {
+      setRun(current => {
+        if (!current || !['running', 'waiting'].includes(current.status)) return current;
+        const next = advanceSimulation(JSON.parse(JSON.stringify(current))).state;
+        try {
+          saveBrowserRun(next);
+          setRecentRuns(listBrowserRuns());
+        } catch (error) {
+          setNotice(`Could not save simulation history: ${error.message}`);
+        }
+        return next;
+      });
+    }, speed);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [localMode, run?.id, run?.status, speed]);
 
   useEffect(() => {
     if (socketOnline && run?.id) socket.emit('simulation:join', run.id);
@@ -151,7 +202,7 @@ function App() {
   const resolutionCandidates = cycleProcesses.length ? cycleProcesses : processStates.filter(process => process.status === 'deadlocked').map(process => process.id);
   const completedCount = processStates.filter(process => ['completed', 'terminated'].includes(process.status)).length;
   const cpuLoad = run?.tick ? Math.round(run.cpu.busyTicks / run.tick * 100) : 0;
-  const appStatus = !apiOnline ? 'offline' : run?.status === 'deadlocked' ? 'deadlock' : run?.status === 'running' ? 'running' : run?.status === 'complete' ? 'complete' : 'ready';
+  const appStatus = !apiOnline && !localMode ? 'offline' : run?.status === 'deadlocked' ? 'deadlock' : run?.status === 'running' ? 'running' : run?.status === 'complete' ? 'complete' : 'ready';
 
   function updateModel(updater) {
     setModel(current => typeof updater === 'function' ? updater(current) : updater);
@@ -213,6 +264,12 @@ function App() {
 
   async function pauseCurrentRun() {
     if (!run || !['running', 'waiting'].includes(run.status)) return;
+    if (localMode) {
+      const paused = { ...run, status: 'paused' };
+      saveBrowserRun(paused);
+      setRun(paused);
+      return;
+    }
     const result = await post(`/api/simulations/${run.id}/pause`);
     setRun(result.state);
   }
@@ -234,6 +291,11 @@ function App() {
   }
 
   async function refreshLists() {
+    if (localMode) {
+      setScenarios(listBrowserScenarios());
+      setRecentRuns(listBrowserRuns());
+      return;
+    }
     const [scenarioData, runData] = await Promise.all([api('/api/scenarios'), api('/api/simulations')]);
     setScenarios(scenarioData);
     setRecentRuns(runData);
@@ -243,6 +305,13 @@ function App() {
     if (!scenarioName.trim()) return setNotice('Give the scenario a name before saving.');
     setBusy(true);
     try {
+      if (localMode) {
+        const saved = saveBrowserScenario(scenarioName.trim(), model);
+        setScenarios(listBrowserScenarios());
+        setScenarioToLoad(saved.id);
+        setNotice(`Saved “${saved.name}” in this browser.`);
+        return;
+      }
       const saved = await post('/api/scenarios', { name: scenarioName.trim(), model });
       await refreshLists();
       setScenarioToLoad(saved.id);
@@ -259,6 +328,15 @@ function App() {
     setBusy(true);
     try {
       await pauseCurrentRun();
+      if (localMode) {
+        const saved = listBrowserScenarios().find(item => item.id === scenarioToLoad);
+        if (!saved) throw new Error('Saved scenario not found in this browser.');
+        setModel(saved.model);
+        setScenarioName(saved.name);
+        setRun(null);
+        setNotice(`Loaded “${saved.name}” from this browser.`);
+        return;
+      }
       const saved = await api(`/api/scenarios/${scenarioToLoad}`);
       setModel(saved.model);
       setScenarioName(saved.name);
@@ -275,6 +353,13 @@ function App() {
     if (!scenarioToLoad) return;
     setBusy(true);
     try {
+      if (localMode) {
+        deleteBrowserScenario(scenarioToLoad);
+        setScenarioToLoad('');
+        setScenarios(listBrowserScenarios());
+        setNotice('Scenario removed from this browser.');
+        return;
+      }
       await api(`/api/scenarios/${scenarioToLoad}`, { method: 'DELETE' });
       setScenarioToLoad('');
       await refreshLists();
@@ -291,6 +376,15 @@ function App() {
     setBusy(true);
     try {
       if (run?.id !== runToLoad) await pauseCurrentRun();
+      if (localMode) {
+        const saved = loadBrowserRun(runToLoad);
+        if (!saved) throw new Error('Saved run not found in this browser.');
+        setRun(saved);
+        setModel(saved.model);
+        setScenarioName(saved.scenarioName);
+        setNotice('Stored run restored from this browser.');
+        return;
+      }
       const result = await api(`/api/simulations/${runToLoad}`);
       setRun(result.state);
       setModel(result.state.model);
@@ -304,6 +398,13 @@ function App() {
   }
 
   async function createRun() {
+    if (localMode) {
+      const state = createSimulation(model, undefined, scenarioName.trim() || 'Live simulation');
+      saveBrowserRun(state);
+      setRun(state);
+      setRecentRuns(listBrowserRuns());
+      return state;
+    }
     const result = await post('/api/simulations', { model, scenarioName: scenarioName.trim() || 'Live simulation' });
     setRun(result.state);
     await refreshLists();
@@ -317,6 +418,30 @@ function App() {
       let currentRun = run;
       if (!currentRun && ['start', 'step'].includes(action)) currentRun = await createRun();
       if (!currentRun) return setNotice('Create a simulation before using runtime controls.');
+      if (localMode) {
+        let next = JSON.parse(JSON.stringify(currentRun));
+        if (action === 'start') {
+          if (['complete', 'deadlocked'].includes(next.status)) throw new Error('Start a new run to continue.');
+          next.status = 'running';
+          setNotice('Simulation running in this browser.');
+        } else if (action === 'pause') {
+          next.status = 'paused';
+          setNotice('');
+        } else if (action === 'reset') {
+          next = createSimulation(next.model, next.id, next.scenarioName);
+          setNotice('Run reset to its configured initial state.');
+        } else if (action === 'step') {
+          if (['complete', 'deadlocked'].includes(next.status)) throw new Error('Start a new run to continue.');
+          next.status = 'paused';
+          next = advanceSimulation(next).state;
+          if (next.status === 'waiting') next.status = 'paused';
+          setNotice('');
+        }
+        saveBrowserRun(next);
+        setRun(next);
+        setRecentRuns(listBrowserRuns());
+        return;
+      }
       const result = action === 'start'
         ? await post(`/api/simulations/${currentRun.id}/start`, { tickMs: Number(speed) })
         : await post(`/api/simulations/${currentRun.id}/${action}`);
@@ -334,7 +459,7 @@ function App() {
 
   async function changeSpeed(value) {
     setSpeed(value);
-    if (run?.status !== 'running') return;
+    if (localMode || run?.status !== 'running') return;
     try {
       const result = await post(`/api/simulations/${run.id}/speed`, { tickMs: value });
       setRun(result.state);
@@ -359,6 +484,16 @@ function App() {
     if (!run || !resolutionProcess) return;
     setBusy(true);
     try {
+      if (localMode) {
+        const result = resolveDeadlock(JSON.parse(JSON.stringify(run)), resolutionProcess);
+        saveBrowserRun(result.state);
+        setRun(result.state);
+        setResolutionOpen(false);
+        setResolutionProcess('');
+        setRecentRuns(listBrowserRuns());
+        setNotice(`You terminated ${result.state.resolution?.process || resolutionProcess}; released resources are back in the system.`);
+        return;
+      }
       const result = await post(`/api/simulations/${run.id}/resolve`, { processId: resolutionProcess });
       setRun(result.state);
       setResolutionOpen(false);
@@ -388,8 +523,8 @@ function App() {
           <span><strong>DEADLOCK<span>LAB</span></strong><small>OPERATING SYSTEMS SIMULATOR</small></span>
         </a>
         <div className="topbar-right">
-          <div className={`service-status ${apiOnline ? 'online' : 'offline'}`}><Database size={14} />{apiOnline ? 'API · SQLITE' : 'API OFFLINE'}</div>
-          <div className={`socket-status ${socketOnline ? 'online' : ''}`}>{socketOnline ? <Wifi size={14} /> : <WifiOff size={14} />}{socketOnline ? 'LIVE STREAM' : 'STREAM OFFLINE'}</div>
+          <div className={`service-status ${apiOnline || localMode ? 'online' : 'offline'}`}>{localMode ? <HardDrive size={14} /> : <Database size={14} />}{localMode ? 'BROWSER STORAGE' : apiOnline ? 'API · SQLITE' : 'API OFFLINE'}</div>
+          <div className={`socket-status ${socketOnline || localMode ? 'online' : ''}`}>{localMode ? <Activity size={14} /> : socketOnline ? <Wifi size={14} /> : <WifiOff size={14} />}{localMode ? 'LOCAL SIMULATION' : socketOnline ? 'LIVE STREAM' : 'STREAM OFFLINE'}</div>
         </div>
       </header>
 
@@ -447,7 +582,7 @@ function App() {
             </section>
 
             <section className="side-section scenario-section">
-              <div className="section-title"><span className="section-index">02</span><div><h2>Scenario library</h2><p>Saved in the backend database</p></div></div>
+              <div className="section-title"><span className="section-index">02</span><div><h2>Scenario library</h2><p>{localMode ? 'Saved in this browser' : 'Saved in the backend database'}</p></div></div>
               <div className="field-block compact-field"><label htmlFor="scenario-name">Scenario name</label><input id="scenario-name" value={scenarioName} maxLength={80} onChange={event => setScenarioName(event.target.value)} /></div>
               <button className="wide-button secondary-button" type="button" onClick={saveScenario} disabled={busy}><Save size={15} />Save scenario</button>
               <div className="select-row">
@@ -501,7 +636,7 @@ function App() {
                 }) : <div className="empty-state">Resources will appear after configuration.</div>}
               </div></section>
 
-              <section className="monitor-panel events-panel"><div className="panel-heading"><div><span className="panel-kicker">PERSISTED TO SQLITE</span><h2>Execution trace</h2></div><span className="event-total">{run?.events?.length || 0} events</span></div><div className="event-list">
+              <section className="monitor-panel events-panel"><div className="panel-heading"><div><span className="panel-kicker">{localMode ? 'SAVED IN THIS BROWSER' : 'PERSISTED TO SQLITE'}</span><h2>Execution trace</h2></div><span className="event-total">{run?.events?.length || 0} events</span></div><div className="event-list">
                 {recentEvents.length ? recentEvents.map((event, index) => <div className="event-item" key={`${event.tick}-${event.kind}-${index}`}><time>{clockLabel(event.tick)}</time><span className={`event-type ${event.kind.toLowerCase()}`}>{event.kind}</span><p>{event.message}</p></div>) : <div className="empty-state">Backend events appear as the simulation advances.</div>}
               </div></section>
             </div>
@@ -513,7 +648,7 @@ function App() {
 
       {resolutionOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setResolutionOpen(false); }}><section className="resolve-modal" role="dialog" aria-modal="true" aria-labelledby="resolve-title"><div className="modal-top"><span className="modal-alert"><AlertTriangle size={18} /></span><button type="button" className="icon-button" onClick={() => setResolutionOpen(false)} aria-label="Close recovery dialog"><X size={16} /></button></div><p className="panel-kicker">MANUAL RECOVERY</p><h2 id="resolve-title">Choose a process to terminate</h2><p className="modal-description">The backend will stop the selected process, release its resources, persist the recovery action, and resume the remaining processes.</p><label htmlFor="victim-process">Deadlocked process</label><select id="victim-process" value={resolutionProcess} onChange={event => setResolutionProcess(event.target.value)}>{resolutionCandidates.map(id => <option value={id} key={id}>{id}{runtimeAllocations.filter(item => item.process === id).length ? ` · holds ${runtimeAllocations.filter(item => item.process === id).map(item => item.resource).join(', ')}` : ''}</option>)}</select>{selectedVictim && <div className="recovery-preview"><span>RESOURCES TO RELEASE</span><strong>{victimResources.length ? victimResources.join(' · ') : 'None held'}</strong></div>}<div className="modal-actions"><button className="control-button" type="button" onClick={() => setResolutionOpen(false)}>Cancel</button><button className="resolve-button" type="button" onClick={resolveSelectedProcess} disabled={busy || !resolutionProcess}>{busy ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}Resolve & resume</button></div></section></div>}
 
-      <footer><span><HardDrive size={13} />Local SQLite database · durable run history</span><span>Virtual single-core scheduler · single-instance resources</span></footer>
+      <footer><span><HardDrive size={13} />{localMode ? 'Browser storage · device-local history' : 'SQLite database · durable run history'}</span><span>Virtual single-core scheduler · single-instance resources</span></footer>
     </div>
   );
 }

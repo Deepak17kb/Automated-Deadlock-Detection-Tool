@@ -1,6 +1,6 @@
 # Deadlock Runtime Lab
 
-A full-stack operating-systems simulator. A Node.js backend advances a virtual CPU and resource scheduler, broadcasts live state over Socket.IO, and stores scenarios, run snapshots, execution events, and recovery actions in SQLite. The React dashboard lets you inspect a deadlock and choose how to resolve it.
+A browser-based operating-systems simulator. It uses the same virtual CPU, resource scheduler, and deadlock recovery logic in either browser-only mode or with the optional Node.js API.
 
 > This project simulates processes. It does not inspect, pause, or terminate real operating-system processes.
 
@@ -24,28 +24,27 @@ npm start
 
 The Express server serves the production frontend and API on port `3001`. Set `PORT`, `HOST`, or `SIM_TICK_MS` to configure the server. The local API binds to `127.0.0.1` by default.
 
-## Deploy On Render
+## Free GitHub Pages Deployment
 
-The `render.yaml` Blueprint deploys the frontend and Node API as one service. It also mounts a persistent disk at `data/`, where SQLite stores scenarios and run history. Since SQLite must survive deploys and restarts, this configuration uses Render's paid `0.5c-512mb` compute plan and a 1 GB persistent disk.
+The GitHub Actions workflow in `.github/workflows/deploy-pages.yml` builds and deploys the frontend automatically on pushes to `main`. The static site runs the full simulator in the browser; scenarios, current drafts, and recent run history save to that browser's local storage.
 
-1. Sign in to Render and choose **New > Blueprint**.
-2. Connect `Deepak17kb/Automated-Deadlock-Detection-Tool` and select `main`.
-3. Review `render.yaml`; confirm the service and persistent disk pricing before creating resources.
-4. Render builds the Vite frontend, starts Express, checks `/api/health`, and deploys future pushes to `main` automatically.
+1. In GitHub, open **Settings > Pages** and select **GitHub Actions** as the build and deployment source.
+2. Push to `main`, or run **Deploy GitHub Pages** from the **Actions** tab.
+3. The workflow URL appears after the deployment completes. For this repository it is normally `https://deepak17kb.github.io/Automated-Deadlock-Detection-Tool/`.
 
-Render assigns the public `onrender.com` URL after provisioning. The repository's `CNAME` file does not configure Render DNS. To use `deadlock-detection.com`, add it as a custom domain in the Render service and update DNS using the records Render provides.
+GitHub Pages is static hosting: this free deployment does not run Express, Socket.IO, or SQLite. Browser-mode saves are private to that browser profile and do not sync between devices.
 
-Vercel is not required for this setup. It can host a static frontend, but this app's live Socket.IO backend and SQLite database still need a persistent Node host.
+Vercel can also host the static frontend using `vercel.json`. Persistent shared storage and multi-device accounts require a separately hosted API/database.
 
 The API currently has no user authentication. Do not expose sensitive data through the public deployment; add an access gate before using it for private scenarios.
 
 ## Simulation
 
 1. Pick a starter scenario or define processes, resources, allocations, and requests.
-2. Start the run. The backend schedules CPU bursts in round-robin order and advances one virtual second per tick.
-3. Watch process states, resource owners, wait queues, the resource-allocation graph, and the persisted event trace update live.
-4. If the backend detects a wait-for cycle, the run pauses and offers **Resolve deadlock**.
-5. Choose a process in the cycle and confirm. The backend terminates it, releases its resources, records the recovery action, and resumes the remaining processes.
+2. Start the run. The simulator schedules CPU bursts in round-robin order and advances one virtual second per tick.
+3. Watch process states, resource owners, wait queues, the resource-allocation graph, and the event trace update live.
+4. If a wait-for cycle is detected, the run pauses and offers **Resolve deadlock**.
+5. Choose a process in the cycle and confirm. The simulator terminates it, releases its resources, records the recovery action, and resumes the remaining processes.
 
 The controls support pause, resume, single-step, reset, and live speed changes. Completed runs and previous runs remain available in the run history.
 
@@ -56,18 +55,18 @@ The controls support pause, resume, single-step, reset, and live speed changes. 
 - A process runs a deterministic CPU burst, issues its configured requests in order, and releases held resources when it exits.
 - Deadlock detection uses strongly connected components in the wait-for graph.
 - Recovery is an explicit process termination action; this is not Banker's Algorithm and does not model arbitrary OS-level resource policies.
-- There is no user authentication. Run this as a local development tool; add authentication and access control before exposing the API to a network.
+- Static deployments have no account system; local data remains in the current browser. Do not treat local storage as a backup or shared database.
 
 ## Storage
 
-SQLite is created automatically at `data/deadlock-lab.sqlite`. The database stores:
+When the optional Node API is used locally, SQLite is created at `data/deadlock-lab.sqlite` and stores:
 
 - `scenarios`: named configurations and their resource/process model.
 - `simulation_runs`: current run state, status, scenario name, and tick snapshot.
 - `simulation_events`: durable CPU, request, grant, completion, deadlock, and recovery events.
 - `resolutions`: selected victim process and resources released during recovery.
 
-The `data/` directory is ignored by Git. Back it up to preserve local scenarios and run history.
+On GitHub Pages or Vercel static hosting, the same features use browser local storage instead. Those saves do not sync to other devices. The `data/` directory is ignored by Git.
 
 ## Project Structure
 
